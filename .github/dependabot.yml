@@ -10,6 +10,17 @@ updates:
       interval: daily
 
   - package-ecosystem: npm
+    # Univer's facade plugins extend one shared core; mixed versions break
+    # both TypeScript augmentation and runtime registration.
+    groups:
+      univer:
+        applies-to: version-updates
+        patterns:
+          - "@univerjs/*"
+      univer-security:
+        applies-to: security-updates
+        patterns:
+          - "@univerjs/*"
     # vue-tsc 3.3.x uses TypeScript internals removed in TypeScript 7.
     # Lift this only with a verified compiler/vue-tsc upgrade.
     ignore:
