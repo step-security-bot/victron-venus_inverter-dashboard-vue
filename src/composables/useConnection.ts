@@ -6,6 +6,24 @@ import { addHistoryPoint } from './useChart'
 import { type InverterState, mqttConnected, state } from './useInverterState'
 import { type GatewaySnapshot, snapshotToState } from './publicGateway'
 
+/** Page ?token= used by DASHBOARD_SECRET backends for /ws and /api/state. */
+export function dashboardPageToken(): string | null {
+  if (typeof location === 'undefined') return null
+  try {
+    const token = new URLSearchParams(location.search).get('token')
+    return token && token.length > 0 ? token : null
+  } catch {
+    return null
+  }
+}
+
+function withPageToken(url: string): string {
+  const token = dashboardPageToken()
+  if (!token) return url
+  const join = url.includes('?') ? '&' : '?'
+  return `${url}${join}token=${encodeURIComponent(token)}`
+}
+
 export function useConnection() {
   const commandConnected = ref(false)
   let ws: WebSocket | null = null
@@ -76,7 +94,7 @@ export function useConnection() {
       return
     }
     try {
-      const resp = await fetch(apiUrl('/api/state'), { cache: 'no-store' })
+      const resp = await fetch(withPageToken(apiUrl('/api/state')), { cache: 'no-store' })
       if (!resp.ok) return
       const data = (await resp.json()) as InverterState & { ok?: boolean }
       if (!data || data.ok === false) return
@@ -131,7 +149,7 @@ export function useConnection() {
     startHttpPoll()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     try {
-      ws = new WebSocket(`${proto}//${location.host}/ws`)
+      ws = new WebSocket(withPageToken(`${proto}//${location.host}/ws`))
     } catch (e) {
       logger.error('WebSocket connection failed:', e)
       mqttConnected.value = false
