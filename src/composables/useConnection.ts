@@ -27,7 +27,9 @@ function withPageToken(url: string): string {
 export function useConnection() {
   const commandConnected = ref(false)
   let ws: WebSocket | null = null
+  let disposed = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let connectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let lastMessageTime = Date.now()
@@ -89,6 +91,7 @@ export function useConnection() {
   }
 
   async function pollHttpState() {
+    if (disposed) return
     // Fallback when WS is down or silent: /api/state carries live tiles (1.8.17+).
     if (ws && ws.readyState === WebSocket.OPEN && Date.now() - lastMessageTime < 8000) {
       return
@@ -97,7 +100,7 @@ export function useConnection() {
       const resp = await fetch(withPageToken(apiUrl('/api/state')), { cache: 'no-store' })
       if (!resp.ok) return
       const data = (await resp.json()) as InverterState & { ok?: boolean }
-      if (!data || data.ok === false) return
+      if (disposed || !data || data.ok === false) return
       const normalized = processState(data)
       const connected = connectionStatus(data)
       if (connected !== undefined) {
@@ -113,7 +116,7 @@ export function useConnection() {
   }
 
   function startHttpPoll() {
-    if (pollTimer) return
+    if (disposed || pollTimer) return
     const tick = publicMode ? pollPublicGateway : pollHttpState
     void tick()
     pollTimer = setInterval(() => {
@@ -134,22 +137,33 @@ export function useConnection() {
     startHttpPoll()
   }
 
+  function clearConnectTimer() {
+    if (connectTimer) {
+      clearTimeout(connectTimer)
+      connectTimer = null
+    }
+  }
+
   function connectMqtt() {
+    if (disposed) return
     if (publicMode) {
       connectPublic()
       return
     }
 
-    if (ws && ws.readyState === WebSocket.OPEN) return
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
 
+    clearConnectTimer()
     startHttpPoll()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    let socket: WebSocket
     try {
-      ws = new WebSocket(withPageToken(`${proto}//${location.host}/ws`))
+      socket = new WebSocket(withPageToken(`${proto}//${location.host}/ws`))
+      ws = socket
     } catch (e) {
       logger.error('WebSocket connection failed:', e)
       mqttConnected.value = false
@@ -157,7 +171,9 @@ export function useConnection() {
       return
     }
 
-    ws.onopen = () => {
+    socket.onopen = () => {
+      if (disposed || ws !== socket) return
+      clearConnectTimer()
       commandConnected.value = true
       logger.log('WebSocket connected')
       lastMessageTime = Date.now()
@@ -165,21 +181,26 @@ export function useConnection() {
       startHttpPoll()
     }
 
-    ws.onclose = () => {
+    socket.onclose = () => {
+      if (disposed || ws !== socket) return
+      clearConnectTimer()
+      ws = null
       commandConnected.value = false
       mqttConnected.value = false
       stopHeartbeat()
       reconnectTimer = setTimeout(connectMqtt, 2000)
     }
 
-    ws.onerror = () => {
+    socket.onerror = () => {
+      if (disposed || ws !== socket) return
       commandConnected.value = false
       logger.error('WebSocket error')
       mqttConnected.value = false
-      ws?.close()
+      socket.close()
     }
 
-    ws.onmessage = (e) => {
+    socket.onmessage = (e) => {
+      if (disposed || ws !== socket) return
       lastMessageTime = Date.now()
       try {
         const data = JSON.parse(e.data) as InverterState
@@ -189,6 +210,11 @@ export function useConnection() {
         logger.error('Failed to parse WS message:', err)
       }
     }
+    connectTimer = setTimeout(() => {
+      if (disposed || ws !== socket) return
+      connectTimer = null
+      if (socket.readyState === WebSocket.CONNECTING) socket.close()
+    }, 10000)
   }
 
   function startHeartbeat() {
@@ -218,7 +244,20 @@ export function useConnection() {
     }
   }
 
+  function closeSocket() {
+    clearConnectTimer()
+    const socket = ws
+    ws = null
+    if (!socket) return
+    socket.onopen = null
+    socket.onclose = null
+    socket.onerror = null
+    socket.onmessage = null
+    socket.close()
+  }
+
   function cleanup() {
+    disposed = true
     commandConnected.value = false
     publicActive = false
     publicRequest?.abort()
@@ -227,41 +266,46 @@ export function useConnection() {
       clearTimeout(publicExpiryTimer)
       publicExpiryTimer = null
     }
-    if (publicMode) mqttConnected.value = false
-    if (ws) {
-      ws.close()
-      ws = null
-    }
+    mqttConnected.value = false
+    closeSocket()
     stopHeartbeat()
     stopHttpPoll()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('online', onOnline)
+    }
   }
 
-  // Auto-reconnect on visibility change
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        if (publicMode) {
-          void pollPublicGateway()
-          return
-        }
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          connectMqtt()
-        }
-      }
-    })
+  function onVisibilityChange() {
+    if (disposed || document.visibilityState !== 'visible') return
+    if (publicMode) {
+      void pollPublicGateway()
+      return
+    }
+    connectMqtt()
+  }
 
-    window.addEventListener('online', () => {
-      if (publicMode) {
-        void pollPublicGateway()
-        return
-      }
-      ws?.close()
-      setTimeout(connectMqtt, 500)
-    })
+  function onOnline() {
+    if (disposed) return
+    if (publicMode) {
+      void pollPublicGateway()
+      return
+    }
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    closeSocket()
+    commandConnected.value = false
+    mqttConnected.value = false
+    stopHeartbeat()
+    reconnectTimer = setTimeout(connectMqtt, 500)
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('online', onOnline)
   }
 
   return {
