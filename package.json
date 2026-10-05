@@ -1,7 +1,7 @@
 {
   "name": "inverter-dashboard-vue",
   "private": true,
-  "version": "2.2.4",
+  "version": "2.2.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,7 +35,7 @@
     "tailwindcss": "^4.3.0",
     "typescript": "6.0.3",
     "vite": "^8.3.2",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "vue-tsc": "3.3.11"
   }
 }
