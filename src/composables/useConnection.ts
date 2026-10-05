@@ -243,14 +243,13 @@ export function useConnection() {
     }
   }
 
-  function send(action: string, payload: Record<string, unknown> = {}) {
-    if (publicMode) {
-      // Read-only public host — writes disabled
-      return
-    }
+  function send(action: string, payload: Record<string, unknown> = {}): boolean {
+    if (publicMode || disposed) return false
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ action, ...payload }))
+      return true
     }
+    return false
   }
 
   function closeSocket() {
