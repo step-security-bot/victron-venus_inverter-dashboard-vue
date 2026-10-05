@@ -28,6 +28,15 @@ export interface EssModeState {
 /** Matches the backend set_ess_mode live-observation window (seconds). */
 export const ESS_MODE_COMMAND_FRESH_WITHIN_S = 30
 
+/** UUID v4 correlation ID, including LAN HTTP where randomUUID is unavailable. */
+export function createEssRequestId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 /**
  * True only when a live (non-retained) ESS observation is recent enough for
  * set_ess_mode. Retained inverter/state leaves ess_mode_observed_at unset.

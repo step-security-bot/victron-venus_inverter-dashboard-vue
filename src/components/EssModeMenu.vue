@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { Check, ChevronDown, Loader2, Zap } from '@lucide/vue'
-import { ESS_MODES, selectedEssMode, type EssModeId, type EssModeState, type EssModeCommandError } from '../essMode'
+import { ESS_MODES, createEssRequestId, selectedEssMode, type EssModeId, type EssModeState, type EssModeCommandError } from '../essMode'
 
 const props = defineProps<{
   mode?: EssModeState
@@ -175,7 +175,13 @@ async function choose(mode: EssModeId) {
     return
   }
   error.value = ''
-  const requestId = crypto.randomUUID()
+  let requestId: string
+  try {
+    requestId = createEssRequestId()
+  } catch {
+    error.value = 'This browser cannot create a command request. No change was sent.'
+    return
+  }
   pending.value = requestId
   timeout = setTimeout(() => {
     error.value = 'Change unconfirmed. Check the current mode before retrying.'

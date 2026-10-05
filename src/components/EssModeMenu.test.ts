@@ -21,7 +21,7 @@ async function open(overrides = {}) {
   await flushPromises()
 }
 beforeEach(() => { vi.useFakeTimers() })
-afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.useRealTimers() })
+afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('explicit ESS mode menu', () => {
   it('opens without a command and highlights the actual controller selection', async () => {
@@ -62,6 +62,25 @@ describe('explicit ESS mode menu', () => {
     expect(choices().every((button) => button.getAttribute('aria-disabled') === 'true')).toBe(true)
     await choose('Off')
     expect(wrapper.emitted('send')).toBeUndefined()
+  })
+
+  it('sends a UUID v4 on LAN HTTP where crypto.randomUUID is unavailable', async () => {
+    const getRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto)
+    vi.stubGlobal('crypto', { getRandomValues })
+    await open()
+    await choose('Off')
+    const [, payload] = wrapper.emitted('send')![0] as [string, { request_id: string }]
+    expect(payload.request_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(document.body.textContent).toContain('Waiting for the controller')
+  })
+
+  it('shows an error without sending when secure random generation is unavailable', async () => {
+    vi.stubGlobal('crypto', {})
+    await open()
+    await choose('Off')
+    expect(wrapper.emitted('send')).toBeUndefined()
+    expect(document.body.textContent).toContain('No change was sent.')
+    expect(document.body.textContent).not.toContain('Waiting for the controller')
   })
 
   it.each([{ connected: false }, { fresh: false }])('does not confirm a matching retained/stale response: %j', async (unavailable) => {
