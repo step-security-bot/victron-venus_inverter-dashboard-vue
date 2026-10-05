@@ -22,7 +22,7 @@ export function useLocalTariff(scope: () => string) {
   function load() {
     try {
       const saved = localStorage.getItem(tariffModeKey(scope()))
-      if (saved !== null && saved !== 'controller' && saved !== 'local') throw new Error()
+      if (saved !== null && saved !== 'controller' && saved !== 'local') throw new Error('Invalid saved tariff preference.')
       mode.value = saved === 'local' ? 'local' : 'controller'
       const value = loadTariff(scope())
       plan.value = value.plan

@@ -39,10 +39,10 @@
           </button>
         </div>
         <p v-if="error" class="ess-mode-message ess-mode-error" role="alert">{{ error }}</p>
-        <p v-else-if="pending" class="ess-mode-message" role="status">
+        <output v-else-if="pending" class="ess-mode-message">
           Waiting for the controller…
-        </p>
-        <p v-else-if="unavailable" class="ess-mode-message" role="status">{{ unavailable }}</p>
+        </output>
+        <output v-else-if="unavailable" class="ess-mode-message">{{ unavailable }}</output>
         <p v-else class="ess-mode-message">
           Off / On changes inverter power. Other choices keep the power switch unchanged.
         </p>
@@ -296,6 +296,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .ess-mode-message {
+  display: block;
   margin: 6px 12px 5px;
   font-size: 12px;
   line-height: 1.4;
