@@ -1,4 +1,5 @@
 import { ref, shallowRef } from 'vue'
+import type { EssModeState } from '../essMode'
 import type { DashboardControl } from '../utils'
 import type {
   HaCoverDisplay,
@@ -44,7 +45,9 @@ export interface InverterState {
   ha_direct_connected?: boolean
   dry_run?: boolean
   controller_controls_available?: boolean
-  ess_mode?: { hub4_mode?: number; battery_life_state?: number; mode_name?: string; is_external?: boolean }
+  ess_mode?: EssModeState & { hub4_mode?: number; battery_life_state?: number }
+  ess_mode_controls_available?: boolean
+  ess_mode_observed_at?: number | null
   booleans?: Record<string, unknown>
   features?: Record<string, boolean>
   mppt_individual?: number[]

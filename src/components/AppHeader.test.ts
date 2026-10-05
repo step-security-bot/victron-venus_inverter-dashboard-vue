@@ -45,18 +45,19 @@ describe('controller header without Home Assistant', () => {
 
   it('disables writes after controller/transport loss without hiding controls', async () => {
     const wrapper = mount(AppHeader, { props: { ...props, controlsAvailable: false }, global })
-    for (const text of ['DRY', 'EXTERNAL', 'ONLY CHARGING', 'NO FEED']) {
+    for (const text of ['DRY', 'ONLY CHARGING', 'NO FEED']) {
       const button = wrapper.findAll('button').find((item) => item.text() === text)
       expect(button?.attributes('disabled')).toBeDefined()
       await button?.trigger('click')
     }
     expect(wrapper.emitted('send')).toBeUndefined()
+    expect(wrapper.get('[aria-haspopup="menu"]').attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
   })
 
   it('keeps unknown ESS and DRY distinct from off', () => {
     const wrapper = mount(AppHeader, { props: { ...props, dryRun: undefined, essClass: 'unavailable', essText: 'ESS —' }, global })
-    for (const text of ['DRY', 'ESS —']) {
+    for (const text of ['DRY']) {
       const button = wrapper.findAll('button').find((item) => item.text() === text)
       expect(button?.attributes('disabled')).toBeDefined()
       expect(button?.attributes('aria-pressed')).toBeUndefined()

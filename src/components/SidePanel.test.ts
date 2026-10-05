@@ -65,3 +65,43 @@ describe('SidePanel disclosures', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('desktop appliance and configured Home parity', () => {
+  it('hides absent and idle appliances and shows only active enabled sections', async () => {
+    const wrapper = mount(SidePanel, { props, global: { plugins: [i18n] } })
+    expect(wrapper.find('[data-testid="appliances"]').exists()).toBe(false)
+    await wrapper.setProps({ dishwasherRunning: false, washerRunning: false, dryerRunning: false })
+    expect(wrapper.find('[data-testid="appliances"]').exists()).toBe(false)
+    await wrapper.setProps({ dishwasherRunning: true, washerRunning: true, dryerRunning: true })
+    for (const name of ['dishwasher', 'washer', 'dryer']) expect(wrapper.get(`[data-testid="${name}"]`).text()).toContain('Running')
+    await wrapper.setProps({ showDishwasher: false, showWasher: false, showDryer: false })
+    expect(wrapper.find('[data-testid="appliances"]').exists()).toBe(false)
+    await wrapper.setProps({ showWasher: true })
+    expect(wrapper.find('[data-testid="dishwasher"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="dryer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="washer"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('renders only configured Home entities in order with full labels and blocks unknown states', async () => {
+    const homeButtons = [
+      { id: 'laundry', label: 'Laundry', entity: 'switch.configured_laundry' },
+      { id: 'guard', label: 'Bedroom guard 3', entity: 'switch.custom_guard' },
+      { id: 'lamp', label: 'My lamp', entity: 'light.custom_lamp' },
+    ]
+    const wrapper = mount(SidePanel, { props: { ...props, homeButtons, buttonStates: { laundry: 'on', guard: 'off', lamp: 'unavailable' } }, global: { plugins: [i18n] } })
+    const buttons = wrapper.findAll('button').filter((b) => homeButtons.some((item) => item.label === b.text()))
+    expect(buttons.map((button) => button.text())).toEqual(homeButtons.map((button) => button.label))
+    expect(buttons[0].attributes('aria-pressed')).toBe('true')
+    expect(buttons[1].attributes('aria-pressed')).toBe('false')
+    expect(buttons[2].attributes('disabled')).toBeDefined()
+    await buttons[1].trigger('click')
+    await buttons[2].trigger('click')
+    expect(wrapper.emitted('send')).toEqual([['toggle', { entity: 'switch.custom_guard' }]])
+    await wrapper.setProps({ homeButtons: [] })
+    expect(wrapper.text()).not.toContain('Bedroom guard 3')
+    expect(wrapper.text()).not.toContain('Laundry')
+    wrapper.unmount()
+  })
+})

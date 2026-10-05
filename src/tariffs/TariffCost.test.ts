@@ -3,6 +3,8 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { newDraft, rateGrid, validatePlan } from './model'
 import { clearTariff, saveTariff, tariffKey } from './storage'
 import TariffCost from './TariffCost.vue'
+import TariffConfiguration from './TariffConfiguration.vue'
+import { setTariffMode } from './useLocalTariff'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -24,8 +26,10 @@ it('uses the controller tariff by default and requires an explicit local choice'
   const wrapper = mount(TariffCost, { props: { tariffScope: 'site', kwh: 10 } })
   expect(wrapper.text()).not.toContain('Billing period')
   await wrapper.setProps({ configuredTariff: tariff(0.2) })
-  expect(wrapper.text()).toContain('Controller tariff')
-  expect(wrapper.text()).toContain('2026-09-17 – 2026-10-16')
+  expect(wrapper.attributes('title')).toContain('Controller tariff')
+  expect(wrapper.text()).not.toContain('Controller tariff')
+  expect(wrapper.find('button').exists()).toBe(false)
+  expect(wrapper.attributes('title')).toContain('2026-09-17 – 2026-10-16')
   expect(wrapper.text()).toContain('2.00')
   await wrapper.setProps({ configuredTariff: tariff(0.4) })
   expect(wrapper.text()).toContain('4.00')
@@ -33,35 +37,62 @@ it('uses the controller tariff by default and requires an explicit local choice'
   window.dispatchEvent(new StorageEvent('storage', { key: tariffKey('site') }))
   await flushPromises()
   expect(wrapper.text()).toContain('4.00')
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text().includes('Use a local tariff'))!
-    .trigger('click')
-  expect(wrapper.text()).toContain('Local tariff')
+  const settings = mount(TariffConfiguration, { props: { tariffScope: 'site', configuredTariff: tariff(0.4) } })
+  await settings.findAll('button').find((button) => button.text().includes('Use a local tariff'))!.trigger('click')
+  expect(wrapper.attributes('title')).toContain('Local tariff')
+  expect(wrapper.text()).not.toContain('Local tariff')
   expect(wrapper.text()).toContain('3.00')
   await wrapper.setProps({ configuredTariff: tariff(0.5) })
   expect(wrapper.text()).toContain('3.00')
   clearTariff('site')
   window.dispatchEvent(new StorageEvent('storage', { key: tariffKey('site') }))
   await flushPromises()
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text().includes('Use controller tariff'))!
-    .trigger('click')
+  await settings.findAll('button').find((button) => button.text().includes('Use controller tariff'))!.trigger('click')
   expect(wrapper.text()).toContain('5.00')
   await wrapper.setProps({ tariffScope: 'other-site', configuredTariff: undefined })
   expect(wrapper.text()).not.toContain('Billing period')
+  settings.unmount()
   wrapper.unmount()
 })
 it('keeps malformed controller data visible and ignores local overrides in read-only mode', async () => {
   const wrapper = mount(TariffCost, {
     props: { tariffScope: 'site', configuredTariff: {}, readOnly: true },
   })
-  expect(wrapper.get('[role="alert"]').text()).toContain('controller tariff is invalid')
+  expect(wrapper.get('[role="alert"]').text()).toBe('Tariff unavailable')
+  expect(wrapper.attributes('title')).toContain('controller tariff is invalid')
+  setTariffMode('site', 'local')
   expect(wrapper.find('button').exists()).toBe(false)
   saveTariff('site', tariff(0.2))
   window.dispatchEvent(new StorageEvent('storage', { key: tariffKey('site') }))
   await flushPromises()
   expect(wrapper.find('[role="alert"]').exists()).toBe(true)
   wrapper.unmount()
+})
+
+
+it('keeps preference after reopening, synchronizes same-tab edits, and isolates scopes', async () => {
+  saveTariff('site', tariff(0.3))
+  setTariffMode('site', 'local')
+  const wrapper = mount(TariffCost, { props: { tariffScope: 'site', kwh: 10, configuredTariff: tariff(0.4) } })
+  expect(wrapper.text()).toContain('3.00')
+  saveTariff('site', tariff(0.6))
+  await flushPromises()
+  expect(wrapper.text()).toContain('6.00')
+  setTariffMode('other-site', 'controller')
+  await flushPromises()
+  expect(wrapper.text()).toContain('6.00')
+  await wrapper.setProps({ tariffScope: 'other-site' })
+  expect(wrapper.text()).toContain('4.00')
+  wrapper.unmount()
+})
+
+it('keeps failed local preference changes visible in Settings without changing the summary', async () => {
+  const wrapper = mount(TariffConfiguration, { props: { tariffScope: 'site', configuredTariff: tariff(0.4) } })
+  const summary = mount(TariffCost, { props: { tariffScope: 'site', kwh: 10, configuredTariff: tariff(0.4) } })
+  vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('quota') })
+  await wrapper.findAll('button').find((button) => button.text().includes('Use a local tariff'))!.trigger('click')
+  expect(wrapper.get('[role="alert"]').text()).toContain('could not be saved')
+  expect(summary.text()).toContain('4.00')
+  wrapper.unmount()
+  summary.unmount()
 })

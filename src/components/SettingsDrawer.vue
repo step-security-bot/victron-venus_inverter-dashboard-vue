@@ -44,6 +44,10 @@
         </label>
       </div>
 
+      <div class="mt-3 border-t border-slate-800 pt-2 text-slate-300">
+        <TariffConfiguration v-if="open" tariff-scope="dashboard" :configured-tariff="state.ui_config?.electricity_tariff" />
+      </div>
+
       <button
         class="mt-3 w-full rounded bg-blue-600 hover:bg-blue-500 py-1.5 text-xs font-bold text-white"
         @click="save"
@@ -57,6 +61,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import TariffConfiguration from '../tariffs/TariffConfiguration.vue'
 import ModalDialog from './ModalDialog.vue'
 import { state } from '../composables/useInverterState'
 
