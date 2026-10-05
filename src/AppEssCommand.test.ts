@@ -71,6 +71,35 @@ async function openMenu() {
 }
 
 describe('ESS local send refusal feedback', () => {
+  it('accepts a fresh observation received while the background clock tick is delayed', async () => {
+    const off = await openMenu()
+    // A background tab can receive state while its one-second timer is throttled.
+    vi.setSystemTime(new Date(now.getTime() + 10_000))
+    FakeSocket.latest.onmessage?.({ data: JSON.stringify({
+      ...state.value, ess_mode_observed_at: Date.now() / 1000 - 2,
+    }) })
+    await flushPromises()
+    expect(off.getAttribute('aria-disabled')).toBe('false')
+    expect(document.body.textContent).not.toContain('Waiting for fresh ESS status')
+    expect(FakeSocket.latest.send).not.toHaveBeenCalled()
+
+    // The same live-clock calculation must continue rejecting future timestamps.
+    FakeSocket.latest.onmessage?.({ data: JSON.stringify({
+      ...state.value, ess_mode_observed_at: Date.now() / 1000 + 1,
+    }) })
+    await flushPromises()
+    expect(off.getAttribute('aria-disabled')).toBe('true')
+    expect(FakeSocket.latest.send).not.toHaveBeenCalled()
+  })
+
+  it('expires a displayed observation on the clock tick without a new state message', async () => {
+    const off = await openMenu()
+    expect(off.getAttribute('aria-disabled')).toBe('false')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(off.getAttribute('aria-disabled')).toBe('true')
+    expect(FakeSocket.latest.send).not.toHaveBeenCalled()
+  })
+
   it('immediately rejects a selection that expires between the display tick and send', async () => {
     const off = await openMenu()
     expect(off.getAttribute('aria-disabled')).toBe('false')

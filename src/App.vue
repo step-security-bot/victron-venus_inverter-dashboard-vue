@@ -200,7 +200,12 @@ const {
 const { isDark, toggleTheme } = useTheme()
 const settingsOpen = ref(false)
 const now = ref(Date.now())
-const essFresh = computed(() => isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at, now.value))
+const essFresh = computed(() => {
+  // Keep idle observations aging, but do not use a throttled timer's old time
+  // when a fresh observation arrives in a background tab.
+  void now.value
+  return isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
+})
 let essClock: ReturnType<typeof setInterval> | undefined
 onMounted(() => { essClock = setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => { clearInterval(essClock) })
