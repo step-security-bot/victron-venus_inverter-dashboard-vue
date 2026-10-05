@@ -1,5 +1,7 @@
 import { validatePlan, type TariffPlan } from './model'
 
+export const LOCAL_TARIFF_EVENT = 'local-tariff-changed'
+
 export function tariffKey(scope: string): string {
   return `victron.energy-tariff.v1:${scope}`
 }
@@ -21,6 +23,7 @@ export function saveTariff(scope: string, plan: TariffPlan): void {
   const validated = validatePlan(plan)
   try {
     localStorage.setItem(tariffKey(scope), JSON.stringify(validated))
+    window.dispatchEvent(new CustomEvent(LOCAL_TARIFF_EVENT, { detail: scope }))
   } catch {
     throw new Error(
       'The tariff could not be saved on this device. Your previous tariff is unchanged.'
@@ -31,6 +34,7 @@ export function saveTariff(scope: string, plan: TariffPlan): void {
 export function clearTariff(scope: string): void {
   try {
     localStorage.removeItem(tariffKey(scope))
+    window.dispatchEvent(new CustomEvent(LOCAL_TARIFF_EVENT, { detail: scope }))
   } catch {
     throw new Error('The saved tariff could not be removed on this device.')
   }

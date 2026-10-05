@@ -62,6 +62,16 @@ it('does not turn unknown grid energy into a zero-cost estimate', () => {
   }
   const wrapper = mount(DailyStats)
   expect(wrapper.text()).not.toContain('≈')
-  expect(wrapper.text()).toContain('0.2000 USD/kWh now')
+  expect(wrapper.text()).toContain('0.2000 USD/kWh')
+  wrapper.unmount()
+})
+
+
+it('keeps tariff controls and billing paragraphs out of the energy strip', () => {
+  const wrapper = mount(DailyStats)
+  for (const text of ['Controller tariff', 'Use a local tariff', 'Interval energy cost', 'Billing period']) {
+    expect(wrapper.text()).not.toContain(text)
+  }
+  expect(wrapper.find('button').exists()).toBe(false)
   wrapper.unmount()
 })

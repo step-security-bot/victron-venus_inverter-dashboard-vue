@@ -82,3 +82,21 @@ describe('appliance telemetry independent of legacy load names', () => {
     expect(ha.dryerRunning.value).toBe(false)
   })
 })
+
+
+it('never invents Home entities or unavailable switch readings', () => {
+  state.value = { ui_config: {} }
+  const ha = useHA()
+  expect(ha.homeButtons.value).toEqual([])
+  state.value = {
+    ui_config: { home_buttons: [
+      { id: 'one', label: 'Configured only', entity: 'switch.explicit', state_key: 'chosen_state' },
+      { id: 'two', label: 'Unknown', entity: 'light.second' },
+    ] }, booleans: { chosen_state: 'on', home_two: null },
+  }
+  expect(ha.homeButtons.value.map((button) => button.entity)).toEqual(['switch.explicit', 'light.second'])
+  expect(ha.buttonStates.value).toEqual({ one: 'on', two: 'unavailable' })
+  state.value = { ...state.value, ui_config: { home_buttons: [] } }
+  expect(ha.homeButtons.value).toEqual([])
+  ha.cleanupHa()
+})

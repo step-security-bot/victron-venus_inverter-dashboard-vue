@@ -25,16 +25,17 @@
           <FlaskConical :size="7" /> DRY
         </button>
 
-        <button
-          type="button"
-          class="classic-btn min-w-[45px]"
-          :class="{ 'classic-btn-on': essClass === 'on' }"
-          :disabled="controlsAvailable === false || essClass === 'unavailable'"
-          :aria-pressed="essClass === 'unavailable' ? undefined : essClass === 'on'"
-          @click="$emit('send', 'ess_mode')"
-        >
-          <Zap :size="7" /> {{ essText.toUpperCase() }}
-        </button>
+        <EssModeMenu
+          :mode="essMode"
+          :label="essText"
+          :active="essClass === 'on'"
+          :dry-run="dryRun"
+          :connected="controlsAvailable"
+          :fresh="essFresh"
+          :controls-available="essControlsAvailable"
+          :command-error="commandError"
+          @send="(action, payload) => emit('send', action, payload)"
+        />
 
         <template v-if="showHeaderToggles !== false && headerToggles.length > 0">
           <div class="w-px h-3 bg-slate-300 mx-0.5"></div>
@@ -76,12 +77,18 @@
 <script setup lang="ts">
 import { FlaskConical, Moon, Settings, Sun, Zap } from '@lucide/vue'
 import { type DashboardControl, inverterControlFlagKey } from '../utils'
+import EssModeMenu from './EssModeMenu.vue'
+import type { EssModeState, EssModeCommandError } from '../essMode'
 import NotificationHistory from './NotificationHistory.vue'
 
 const props = withDefaults(defineProps<{
   dryRun?: boolean
   essClass: string
   essText: string
+  essMode?: EssModeState
+  essFresh?: boolean
+  essControlsAvailable?: boolean
+  commandError?: EssModeCommandError | null
   headerToggles: DashboardControl[]
   toggleStates: Record<string, string> | undefined
   isDark: boolean

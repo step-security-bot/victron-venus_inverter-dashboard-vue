@@ -8,7 +8,7 @@ import type {
   HaWeatherDisplay,
 } from '../types/ha'
 import { isPublicMode } from '../config/publicMode'
-import { DEFAULT_INVERTER_CONTROLS, resolveHeaderToggleState } from '../utils'
+import { controlBooleanState, DEFAULT_INVERTER_CONTROLS, resolveHeaderToggleState } from '../utils'
 import { state } from './useInverterState'
 
 // HA initialization and cleanup
@@ -50,9 +50,6 @@ export function useHA() {
 
   const haEnabled = computed(() => !!state.value.ha_direct_connected)
   const haConnected = computed(() => !!state.value.ha_direct_connected)
-
-  const waterValveEntity = computed(() => 'switch.shutoff_valve')
-  const pumpSwitchEntity = computed(() => 'switch.pump_switch')
 
   const waterValveState = computed(() =>
     state.value.water_valve === undefined ? undefined : coerceBool(state.value.water_valve)
@@ -102,10 +99,7 @@ export function useHA() {
     homeButtons.value.forEach(
       (btn: { id: string; label: string; entity: string; state_key?: string }) => {
         const stateKey = btn.state_key || `home_${btn.id}`
-        let val = state.value.booleans?.[stateKey]
-        if (typeof val === 'string') val = val === 'true' || val === '1'
-        else if (typeof val === 'number') val = val !== 0
-        states[btn.id] = val ? 'on' : 'off'
+        states[btn.id] = controlBooleanState(state.value.booleans?.[stateKey])
       }
     )
     return states
@@ -157,8 +151,6 @@ export function useHA() {
     headerToggles,
     buttonStates,
     headerToggleStates,
-    waterValveEntity,
-    pumpSwitchEntity,
     waterValveState,
     pumpSwitchState,
     haSensors,

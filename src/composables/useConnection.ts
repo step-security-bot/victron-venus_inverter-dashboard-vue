@@ -1,3 +1,4 @@
+import type { EssModeCommandError } from '../essMode'
 import { markRaw, ref } from 'vue'
 import { apiUrl, gatewaySnapshotUrl, isPublicMode } from '../config/publicMode'
 import { logger } from '../logger'
@@ -26,6 +27,7 @@ function withPageToken(url: string): string {
 
 export function useConnection() {
   const commandConnected = ref(false)
+  const commandError = ref<EssModeCommandError | null>(null)
   let ws: WebSocket | null = null
   let disposed = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -175,6 +177,7 @@ export function useConnection() {
       if (disposed || ws !== socket) return
       clearConnectTimer()
       commandConnected.value = true
+      commandError.value = null
       logger.log('WebSocket connected')
       lastMessageTime = Date.now()
       startHeartbeat()
@@ -203,8 +206,14 @@ export function useConnection() {
       if (disposed || ws !== socket) return
       lastMessageTime = Date.now()
       try {
-        const data = JSON.parse(e.data) as InverterState
-        processState(data)
+        const data = JSON.parse(e.data)
+        if (data?.type === 'command_error') {
+          if (typeof data.action === 'string' && typeof data.request_id === 'string' && typeof data.error === 'string') {
+            commandError.value = { action: data.action, request_id: data.request_id, error: data.error }
+          }
+          return
+        }
+        processState(data as InverterState)
         mqttConnected.value = connectionStatus(data) ?? true
       } catch (err) {
         logger.error('Failed to parse WS message:', err)
@@ -312,6 +321,7 @@ export function useConnection() {
     state,
     mqttConnected,
     commandConnected,
+    commandError,
     haMqttConnected: { value: null },
     appConfig: { value: null },
     connectMqtt,

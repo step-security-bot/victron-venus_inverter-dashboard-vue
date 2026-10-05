@@ -2,6 +2,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import NotificationBanner from './NotificationBanner.vue'
+import { state } from '../composables/useInverterState'
 import { bannerNotifications, upsertBanner } from '../composables/useNotifications'
 
 enableAutoUnmount(afterEach)
@@ -89,4 +90,23 @@ describe('notification event time', () => {
     expect(wrapper.text()).not.toContain('just now')
     expect(wrapper.get('time').text()).toBeTruthy()
   })
+})
+
+
+it('renders authoritative backend warnings on initial sync and reconnect, then clears removed slots', async () => {
+  const wrapper = render()
+  const notifications = [alarm(), { ...alarm(), id: 'victron-platform-0-2', title: 'Low battery voltage', body: 'Quattro' }]
+  state.value = { gateway_connected: true, notifications }
+  await nextTick()
+  expect(wrapper.text()).toContain('Internal failure')
+  expect(wrapper.text()).toContain('Low battery voltage')
+  expect(wrapper.findAll('time').map((time) => time.text())).toEqual(['1h 15m ago', '1h 15m ago'])
+  state.value = { gateway_connected: false, notifications }
+  await nextTick()
+  state.value = { gateway_connected: true, notifications: notifications.map((item) => ({ ...item })) }
+  await nextTick()
+  expect(wrapper.findAll('time')).toHaveLength(2)
+  state.value = { gateway_connected: true, notifications: [] }
+  await nextTick()
+  expect(wrapper.text()).toBe('')
 })

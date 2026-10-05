@@ -110,6 +110,8 @@
           :key="btn.id"
           class="classic-btn !flex-1 !min-w-[50px] !normal-case flex flex-col items-center gap-0.5"
           :class="{ 'classic-btn-on': buttonStates[btn.id] === 'on' }"
+          :disabled="buttonStates[btn.id] !== 'on' && buttonStates[btn.id] !== 'off'"
+          :aria-pressed="buttonStates[btn.id] === 'on' ? true : buttonStates[btn.id] === 'off' ? false : undefined"
           @click="$emit('send', 'toggle', { entity: btn.entity })"
         >
           <component
@@ -118,7 +120,7 @@
             :size="14"
             class="opacity-70"
           />
-          <span class="text-[9px] leading-tight">{{ getHomeButtonLabel(btn.label) }}</span>
+          <span class="text-[9px] leading-tight">{{ btn.label }}</span>
         </button>
       </div>
     </div>
@@ -321,11 +323,13 @@
 
     <!-- Appliances -->
     <div
-      v-if="showDishwasher !== false || showWasher !== false || showDryer !== false"
+      v-if="(showDishwasher !== false && dishwasherRunning === true) || (showWasher !== false && washerRunning === true) || (showDryer !== false && dryerRunning === true)"
+      data-testid="appliances"
       class="flex flex-col gap-0.5"
     >
       <div
-        v-if="showDishwasher !== false"
+        v-if="showDishwasher !== false && dishwasherRunning === true"
+        data-testid="dishwasher"
         class="classic-card px-2 py-0.5 flex justify-between items-center"
       >
         <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{{
@@ -346,7 +350,8 @@
       </div>
 
       <div
-        v-if="showWasher !== false"
+        v-if="showWasher !== false && washerRunning === true"
+        data-testid="washer"
         class="classic-card px-2 py-0.5 flex justify-between items-center"
       >
         <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{{
@@ -372,7 +377,8 @@
       </div>
 
       <div
-        v-if="showDryer !== false"
+        v-if="showDryer !== false && dryerRunning === true"
+        data-testid="dryer"
         class="classic-card px-2 py-0.5 flex justify-between items-center"
       >
         <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{{
@@ -504,6 +510,10 @@ const props = withDefaults(defineProps<{
   readOnly?: boolean
 }>(), {
   showEv: true,
+  showWasher: true,
+  showDryer: true,
+  showDishwasher: true,
+  showHomeSection: true,
   waterVisible: undefined,
   pumpSwitch: undefined,
   waterValve: undefined,
@@ -564,11 +574,4 @@ function getHomeButtonIcon(entity: string, label: string): LucideIcon | null {
   return null
 }
 
-/** Get display label with keywords stripped */
-function getHomeButtonLabel(label: string): string {
-  return label
-    .replace(/\b(laundry|washer|washing|guard)\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-}
 </script>

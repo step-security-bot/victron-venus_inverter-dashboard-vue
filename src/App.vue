@@ -7,6 +7,10 @@
           :dryRun="dryRun"
           :essClass="essClass"
           :essText="essText"
+          :essMode="state.ess_mode"
+          :essFresh="essFresh"
+          :essControlsAvailable="state.ess_mode_controls_available"
+          :commandError="commandError"
           :headerToggles="headerToggles"
           :toggleStates="headerToggleStates"
           :isDark="isDark"
@@ -154,6 +158,7 @@ import { useHA } from './composables/useHA'
 import { initSystemNotifications } from './composables/useSystemNotifications'
 import { useTheme } from './composables/useTheme'
 import { isPublicMode } from './config/publicMode'
+import { isEssModeCommandFresh } from './essMode'
 import { essStatus, evTelemetry } from './controllerTelemetry'
 import { activeLoads, waterControlAvailable, waterPresent } from './nativeSections'
 import { connectionStatus } from './telemetry'
@@ -165,6 +170,7 @@ const {
   state,
   mqttConnected,
   commandConnected,
+  commandError,
   connectMqtt,
   send: wsSend,
   cleanup: cleanupConnection,
@@ -193,6 +199,11 @@ const {
 } = useHA()
 const { isDark, toggleTheme } = useTheme()
 const settingsOpen = ref(false)
+const now = ref(Date.now())
+const essFresh = computed(() => isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at, now.value))
+let essClock: ReturnType<typeof setInterval> | undefined
+onMounted(() => { essClock = setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { clearInterval(essClock) })
 const uiSettings = computed(() => state.value.ui_config?.settings ?? {})
 const nativeConnected = computed(() => mqttConnected.value && connectionStatus(state.value) !== false)
 const controllerControlsAvailable = computed(() =>
@@ -232,6 +243,10 @@ async function send(action: string, payload: Record<string, unknown> = {}) {
     if (normalized === null) return
     payload = normalized
   }
+  if (action === 'set_ess_mode' && (!controllerControlsAvailable.value
+      || !isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
+      || state.value.ess_mode_controls_available !== true
+      || state.value.ess_mode?.selection_supported !== true || dryRun.value !== false)) return
   if ((action === 'ess_mode' || action === 'dry_run') && !controllerControlsAvailable.value) return
   if (action === 'water_mode' && !canSendWaterMode(payload)) return
   wsSend(action, payload)
