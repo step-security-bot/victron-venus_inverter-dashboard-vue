@@ -255,6 +255,21 @@ devices. Embedded SPA assets in both backends are built from this source.
 Build with `npm ci`, then `npm run build` and `npm test`. The checked-in backend
 assets must be refreshed from this `dist/` when changing the wire contract.
 
+## Notification event time
+
+Native notifications use the source event's `ts` (RFC3339 with a timezone), not
+when the browser received a replay. Banner ages refresh every 15 seconds and on
+focus/visibility changes. Hovering the age shows the full local date, time and
+timezone. Missing or invalid times stay unavailable; a future source time is
+shown as an absolute date rather than “just now”.
+
+History keeps up to 100 entries. A late timestamp completes the existing entry
+without changing its read status. Replay suppression remembers the last 4096
+observed event identities (ID and source timestamp) in the current tab, including
+cleared entries. Older identities can appear again after that bounded window or
+a page reload; timestamps are not assumed to be monotonic. An unknown-time entry
+that was cleared can reappear once its source timestamp first becomes known.
+
 ## Electricity tariffs
 
 The daily strip includes a weekly Univer tariff editor with Emporia reference

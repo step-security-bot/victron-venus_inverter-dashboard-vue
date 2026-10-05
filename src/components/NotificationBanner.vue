@@ -12,6 +12,15 @@
       <span class="font-bold shrink-0">{{ banner.title }}</span>
       <span v-if="banner.body" class="opacity-80 truncate flex-1 min-w-0">{{ banner.body }}</span>
       <span class="flex-1" />
+      <time
+        v-if="notificationTimestampMs(banner.ts) !== null"
+        :datetime="banner.ts"
+        :title="exactNotificationTime(notificationTimestampMs(banner.ts)!)"
+        class="text-[10px] opacity-60 shrink-0 whitespace-nowrap tabular"
+      >{{ formatNotificationAge(banner.ts, now) }}</time>
+      <span v-else class="text-[10px] opacity-60 shrink-0">
+        {{ $t('notifications.timeUnavailable') }}
+      </span>
       <button
         type="button"
         class="shrink-0 rounded p-0.5 opacity-50 transition-opacity hover:opacity-100 cursor-pointer"
@@ -26,7 +35,25 @@
 
 <script setup lang="ts">
 import { AlertOctagon, Info, TriangleAlert, X } from '@lucide/vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { bannerNotifications, dismissBanner } from '../composables/useNotifications'
+import { exactNotificationTime, formatNotificationAge, notificationTimestampMs } from '../notificationTime'
+
+const now = ref(Date.now())
+const refreshClock = () => { now.value = Date.now() }
+let clock: ReturnType<typeof setInterval> | undefined
+watch(bannerNotifications, refreshClock, { deep: true })
+onMounted(() => {
+  refreshClock()
+  clock = setInterval(refreshClock, 15_000)
+  document.addEventListener('visibilitychange', refreshClock)
+  window.addEventListener('focus', refreshClock)
+})
+onUnmounted(() => {
+  clearInterval(clock)
+  document.removeEventListener('visibilitychange', refreshClock)
+  window.removeEventListener('focus', refreshClock)
+})
 
 const levelClasses: Record<string, string> = {
   info: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30',

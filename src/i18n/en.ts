@@ -68,6 +68,7 @@ export default {
     fetchEntities: 'Fetch Entities',
   },
   notifications: {
+    timeUnavailable: 'Event time unavailable',
     title: 'Notifications',
     dismiss: 'Dismiss',
     noNotifications: 'No notifications',

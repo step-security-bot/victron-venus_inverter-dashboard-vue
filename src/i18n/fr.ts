@@ -60,6 +60,7 @@ export default {
     fetchEntities: 'Récupérer les entités',
   },
   notifications: {
+    timeUnavailable: 'Heure de l’événement inconnue',
     title: 'Notifications',
     noNotifications: 'Aucune notification',
     markAllRead: 'Tout marquer comme lu',

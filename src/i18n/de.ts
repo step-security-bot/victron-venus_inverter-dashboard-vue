@@ -60,6 +60,7 @@ export default {
     fetchEntities: 'Entitäten abrufen',
   },
   notifications: {
+    timeUnavailable: 'Ereigniszeit unbekannt',
     title: 'Benachrichtigungen',
     noNotifications: 'Keine Benachrichtigungen',
     markAllRead: 'Alle als gelesen markieren',

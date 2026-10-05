@@ -60,6 +60,7 @@ export default {
     fetchEntities: 'Отримати сутності',
   },
   notifications: {
+    timeUnavailable: 'Час події невідомий',
     title: 'Сповіщення',
     noNotifications: 'Немає сповіщень',
     markAllRead: 'Позначити все прочитаним',

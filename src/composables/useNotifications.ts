@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import { isPublicMode } from '../config/publicMode'
+import { notificationTimestampMs } from '../notificationTime'
 import { state } from './useInverterState'
 
 // Banner + history notifications fed from the notifications[] array that
@@ -17,7 +18,7 @@ export interface BannerNotification {
 }
 
 export interface HistoryEntry extends BannerNotification {
-  timestamp: number
+  timestamp: number | null
   read: boolean
 }
 
@@ -118,8 +119,10 @@ export function clearBanner(id: string) {
 // History panel
 // ---------------------------------------------------------------------------
 
-export function markNotificationRead(id: string) {
-  const entry = historyNotifications.value.find((n) => n.id === id)
+export function markNotificationRead(id: string, timestamp?: number | null) {
+  const entry = historyNotifications.value.find(
+    (n) => n.id === id && (timestamp === undefined || n.timestamp === timestamp)
+  )
   if (entry) entry.read = true
 }
 
@@ -157,7 +160,55 @@ function normalize(n: {
   }
 }
 
-let seenIds = new Set<string>()
+// Per-tab replay memory is bounded independently of the visible 100-row history.
+// Remember the last 4096 observed identities, including cleared/absent events.
+// Beyond this window (or after a page reload), a replay may be recorded again.
+const MAX_SEEN_EVENTS = 4096
+const seenEventTimes = new Map<string, number | null>()
+const seenEvents = new Set<string>()
+
+function eventKey(id: string, timestamp: number | null): string {
+  return JSON.stringify([id, timestamp])
+}
+
+function syncHistory(incoming: BannerNotification[]) {
+  const fresh: HistoryEntry[] = []
+  for (const n of incoming) {
+    if (!n.id) continue
+    const timestamp = notificationTimestampMs(n.ts)
+    const previous = seenEventTimes.get(n.id)
+    const key = eventKey(n.id, timestamp)
+    const entries = [...fresh, ...historyNotifications.value]
+    const entry = entries.find((h) => h.id === n.id && h.timestamp === timestamp)
+    // DateTime may follow Description, even within the same snapshot. Complete
+    // the original entry without making it unread again or replacing its time
+    // with a browser receipt time.
+    const pending =
+      previous === null && timestamp !== null
+        ? entries.find((h) => h.id === n.id && h.timestamp === null)
+        : undefined
+    if (entry) {
+      Object.assign(entry, n, { timestamp })
+    } else if (pending) {
+      Object.assign(pending, n, { timestamp })
+    } else if (!seenEvents.has(key) && (timestamp !== null || !seenEventTimes.has(n.id))) {
+      fresh.push({ ...n, timestamp, read: false })
+    }
+    // Remember cleared occurrences too: reordered/replayed snapshots must not
+    // refill cleared history. Unknown reconnects never erase a known time.
+    seenEvents.delete(key)
+    seenEvents.add(key)
+    seenEventTimes.delete(n.id)
+    seenEventTimes.set(n.id, timestamp ?? previous ?? null)
+    while (seenEvents.size > MAX_SEEN_EVENTS) {
+      seenEvents.delete(seenEvents.values().next().value!)
+    }
+    while (seenEventTimes.size > MAX_SEEN_EVENTS) {
+      seenEventTimes.delete(seenEventTimes.keys().next().value!)
+    }
+  }
+  historyNotifications.value = [...fresh, ...historyNotifications.value].slice(0, MAX_HISTORY)
+}
 
 watch(
   () => state.value.notifications,
@@ -171,14 +222,6 @@ watch(
       if (!ids.has(b.id)) clearBanner(b.id)
     }
 
-    const fresh = incoming.filter((n) => n.id && !seenIds.has(n.id))
-    if (fresh.length > 0) {
-      if (seenIds.size > 500) seenIds = new Set(incoming.map((n) => n.id))
-      for (const n of fresh) seenIds.add(n.id)
-      historyNotifications.value = [
-        ...fresh.map((n) => ({ ...normalize(n), timestamp: Date.now(), read: false })),
-        ...historyNotifications.value,
-      ].slice(0, MAX_HISTORY)
-    }
+    syncHistory(incoming.map(normalize))
   }
 )

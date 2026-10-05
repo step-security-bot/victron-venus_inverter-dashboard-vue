@@ -48,16 +48,17 @@
       <button
         type="button"
         v-for="n in historyNotifications"
-        :key="n.id + n.timestamp"
+        :key="JSON.stringify([n.id, n.timestamp])"
         class="block w-full text-left px-2 py-1 border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
         :class="{ 'opacity-50': n.read }"
-        @click="markNotificationRead(n.id)"
+        @click="markNotificationRead(n.id, n.timestamp)"
       >
         <span class="flex items-start justify-between gap-1">
           <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300">{{
             n.title
           }}</span>
-          <span class="text-[8px] text-slate-400 whitespace-nowrap ml-1">{{
+          <span class="text-[8px] text-slate-400 whitespace-nowrap ml-1"
+            :title="n.timestamp === null ? undefined : exactNotificationTime(n.timestamp)">{{
             formatTime(n.timestamp)
           }}</span>
         </span>
@@ -70,6 +71,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { exactNotificationTime } from '../notificationTime'
 import {
   clearNotifications,
   historyNotifications,
@@ -82,7 +84,8 @@ const { t: $t } = useI18n()
 const showPanel = ref(false)
 const unreadCount = computed(() => unreadNotificationCount())
 
-function formatTime(ts: number): string {
+function formatTime(ts: number | null): string {
+  if (ts === null) return $t('notifications.timeUnavailable')
   const d = new Date(ts)
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }

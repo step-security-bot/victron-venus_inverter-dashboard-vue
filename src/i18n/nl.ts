@@ -60,6 +60,7 @@ export default {
     fetchEntities: 'Entiteiten Ophalen',
   },
   notifications: {
+    timeUnavailable: 'Tijdstip onbekend',
     title: 'Meldingen',
     noNotifications: 'Geen meldingen',
     markAllRead: 'Alles als gelezen markeren',
