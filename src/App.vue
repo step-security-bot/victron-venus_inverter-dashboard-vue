@@ -236,6 +236,19 @@ function flagTogglePayload(payload: Record<string, unknown>): Record<string, unk
 }
 
 async function send(action: string, payload: Record<string, unknown> = {}) {
+  if (action === 'set_ess_mode') {
+    try {
+      const allowed = !readOnly && controllerControlsAvailable.value
+        && isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
+        && state.value.ess_mode_controls_available === true
+        && state.value.ess_mode?.selection_supported === true && dryRun.value === false
+      if (!allowed || !wsSend(action, payload)) refuseEssSelection(payload)
+    } catch {
+      // Vue events cannot propagate async parent failures back to the menu.
+      refuseEssSelection(payload)
+    }
+    return
+  }
   if (readOnly) return
   // Control flags: publish bare key on Cerbo MQTT (desktop parity).
   if (action === 'toggle') {
@@ -243,13 +256,17 @@ async function send(action: string, payload: Record<string, unknown> = {}) {
     if (normalized === null) return
     payload = normalized
   }
-  if (action === 'set_ess_mode' && (!controllerControlsAvailable.value
-      || !isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
-      || state.value.ess_mode_controls_available !== true
-      || state.value.ess_mode?.selection_supported !== true || dryRun.value !== false)) return
   if ((action === 'ess_mode' || action === 'dry_run') && !controllerControlsAvailable.value) return
   if (action === 'water_mode' && !canSendWaterMode(payload)) return
   wsSend(action, payload)
+}
+
+function refuseEssSelection(payload: Record<string, unknown>) {
+  if (typeof payload.request_id !== 'string') return
+  commandError.value = {
+    action: 'set_ess_mode', request_id: payload.request_id,
+    error: 'ESS selection is unavailable. No change was sent.',
+  }
 }
 
 function canSendWaterMode(payload: Record<string, unknown>): boolean {

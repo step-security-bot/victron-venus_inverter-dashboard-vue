@@ -105,7 +105,7 @@ it('renders authoritative backend warnings on initial sync and reconnect, then c
   await nextTick()
   state.value = { gateway_connected: true, notifications: notifications.map((item) => ({ ...item })) }
   await nextTick()
-  expect(wrapper.findAll('time')).toHaveLength(2)
+  expect(wrapper.findAll('time').map((time) => time.text())).toEqual(['1h 15m ago', '1h 15m ago'])
   state.value = { gateway_connected: true, notifications: [] }
   await nextTick()
   expect(wrapper.text()).toBe('')
