@@ -31,6 +31,9 @@ describe('Cerbo measurements in dashboard tiles', () => {
     await view.setProps({ batteries: [{ name: 'BMS', state: 'Idle', soc: 0, voltage: 48 }] })
     expect(view.text()).toContain('0.0%')
     expect(view.text()).toContain('48.00V')
+    await view.setProps({ solarSources: [{ name: 'MPPT', pvVoltage: 0, current: 0, power: 0 }] })
+    expect(view.text()).toContain('0.00V')
+    expect(view.text()).toContain('0.0A')
   })
 
   it('shows tank percent and enables native water commands only with write capability', async () => {
@@ -86,4 +89,22 @@ describe('Cerbo measurements in dashboard tiles', () => {
     expect(view.emitted('send')?.slice(-1)[0]).toEqual(['water_mode', { which: 'valve', mode: 1 }])
     vi.unstubAllGlobals()
   })
+})
+
+it('respects grid phase availability and expires submeter provenance without replacing primary readings', async () => {
+  vi.useFakeTimers()
+  const view = mount(StatCards, { props: { gt: 123, g1: 123, g2: 999, gridL2Available: false,
+    gridBackup: { service: 'com.victronenergy.grid.backup', enabled: true, available: true, power: 60 },
+    gridBackupObservedAt: Date.now() / 1000, gridUsingBackup: false } })
+  expect(view.text()).not.toContain('999W')
+  expect(view.text()).toContain('123W')
+  expect(view.get('[data-testid="grid-backup"]').text()).toContain('60W')
+  expect(view.get('[data-testid="grid-backup"]').attributes('title')).toContain('ready as backup')
+  await vi.advanceTimersByTimeAsync(31000)
+  expect(view.get('[data-testid="grid-backup"]').text()).toContain('—')
+  expect(view.text()).toContain('123W')
+  await view.setProps({ gridL1Available: false })
+  expect(view.text()).not.toContain('123W')
+  view.unmount()
+  vi.useRealTimers()
 })

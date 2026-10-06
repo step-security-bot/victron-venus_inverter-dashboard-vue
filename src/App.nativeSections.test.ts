@@ -2,20 +2,25 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import App from './App.vue'
+import { useConnection } from './composables/useConnection'
 import { mqttConnected, state } from './composables/useInverterState'
 import { normalizeTelemetry } from './telemetry'
 import { i18n } from './i18n'
 import BatterySolarPanel from './components/BatterySolarPanel.vue'
 import StatCards from './components/StatCards.vue'
+import SidePanel from './components/SidePanel.vue'
+import DailyStats from './components/DailyStats.vue'
 
 const commands = vi.hoisted(() => ({ send: vi.fn() }))
 vi.mock('./composables/useConnection', async () => {
   const shared = await import('./composables/useInverterState')
   const { ref } = await import('vue')
-  return { useConnection: () => ({
+  const connection = {
     state: shared.state, mqttConnected: shared.mqttConnected, commandConnected: ref(true),
+    commandError: ref(null), commandResult: ref(null),
     connectMqtt: vi.fn(), send: commands.send, cleanup: vi.fn(),
-  }) }
+  }
+  return { useConnection: () => connection }
 })
 vi.mock('./composables/useChart', () => ({ useChart: () => ({ chartOption: {}, forceUpdateChart: vi.fn() }) }))
 vi.mock('./composables/useSystemNotifications', () => ({ initSystemNotifications: vi.fn() }))
@@ -32,7 +37,13 @@ function render() {
   } })
   return view
 }
-beforeEach(() => { state.value = {}; mqttConnected.value = true; commands.send.mockClear() })
+beforeEach(() => { state.value = {}; mqttConnected.value = true; commands.send.mockReset().mockReturnValue(true); useConnection().commandError.value = null; useConnection().commandResult.value = null; useConnection().commandConnected.value = true })
+async function acceptLatest() {
+  const [action, payload] = commands.send.mock.calls[commands.send.mock.calls.length - 1]
+  useConnection().commandResult.value = { action, request_id: payload.request_id, status: 'accepted' }
+  await nextTick()
+}
+
 afterEach(() => { view?.unmount(); view = undefined; vi.unstubAllGlobals() })
 
 describe('native dashboard sections', () => {
@@ -61,6 +72,22 @@ describe('native dashboard sections', () => {
     state.value = { ...state.value, ui_config: { settings: { show_active_loads: false } } }
     await nextTick()
     expect(wrapper.find('[data-testid="active-loads"]').exists()).toBe(false)
+  })
+
+  it('honors daily and rich Home section visibility without hiding native measurements', async () => {
+    state.value = { ui_config: { settings: { show_daily_stats: false, show_ha_covers: false, show_ha_sensors: false } } }
+    const wrapper = render()
+    expect(wrapper.findComponent(DailyStats).exists()).toBe(false)
+    expect(wrapper.getComponent(SidePanel).props('appConfig')).toMatchObject({ show_ha_covers: false, show_ha_sensors: false })
+    expect(wrapper.findComponent(StatCards).exists()).toBe(true)
+    state.value = { ui_config: { settings: { show_daily_stats: true } } }
+    await nextTick()
+    expect(wrapper.findComponent(DailyStats).exists()).toBe(true)
+  })
+
+  it('does not invent an EV card before any configured or observed EV is available', () => {
+    const wrapper = render()
+    expect(wrapper.find('[data-testid="ev-section"]').exists()).toBe(false)
   })
 
   it('passes backend SoC unchanged to the main tile and renders only real battery entries', async () => {
@@ -131,11 +158,12 @@ describe('native dashboard sections', () => {
     expect(wrapper.get('[data-testid="transport-status"]').text()).toBe(source.toUpperCase())
     expect(wrapper.get('[data-testid="water-section"]').text()).toContain('0.5%')
     await wrapper.get('[aria-label="Pump manual mode"]').trigger('click')
+    await acceptLatest()
     await wrapper.get('[aria-label="Pump automatic mode"]').trigger('click')
     await wrapper.get('[aria-label="Valve manual mode"]').trigger('click')
     await wrapper.get('[aria-label="Valve automatic mode"]').trigger('click')
     expect(commands.send.mock.calls).toEqual([
-      ['water_mode', { which: 'pump', mode: 1 }], ['water_mode', { which: 'pump', mode: 0 }],
+      ['water_mode', expect.objectContaining({ which: 'pump', mode: 1, request_id: expect.any(String) })], ['water_mode', expect.objectContaining({ which: 'pump', mode: 0, request_id: expect.any(String) })],
     ])
     expect(wrapper.get('[aria-label="Pump manual mode"]').attributes('aria-pressed')).toBe('false')
     state.value = { ...state.value, native_connected: false }
@@ -158,12 +186,50 @@ describe('native dashboard sections', () => {
     expect(onlyCharging).toBeDefined()
     expect(onlyCharging?.attributes('disabled')).toBeUndefined()
     await onlyCharging?.trigger('click')
+    await acceptLatest()
     await wrapper.findAll('button').find(button => button.text() === 'DRY')?.trigger('click')
     expect(commands.send.mock.calls).toEqual([
-      ['toggle', { entity: 'only_charging', state: 'on' }], ['dry_run', { value: true }],
+      ['toggle', expect.objectContaining({ entity: 'only_charging', state: 'on', request_id: expect.any(String) })], ['dry_run', expect.objectContaining({ value: true, request_id: expect.any(String) })],
     ])
     state.value = { ...state.value, ui_config: { settings: { show_header_toggles: false } } }
     await nextTick()
     expect(wrapper.findAll('button').some(button => button.text() === 'ONLY CHARGING')).toBe(false)
   })
+})
+
+
+it('requires fresh local HA capability for Home and rich service commands', async () => {
+  state.value = { ha_direct_connected: true, ha_controls_available: true, ha_observed_at: Date.now() / 1000,
+    booleans: { home_lamp: false }, ui_config: { home_buttons: [{ id: 'lamp', entity: 'light.configured', label: 'Configured lamp' }] } }
+  const wrapper = render()
+  const home = () => wrapper.findAll('button').find(button => button.text() === 'Configured lamp')!
+  expect(home().attributes('disabled')).toBeUndefined()
+  await home().trigger('click')
+  expect(commands.send).toHaveBeenCalledWith('toggle', expect.objectContaining({ entity: 'light.configured', request_id: expect.any(String) }))
+  expect(home().attributes('disabled')).toBeDefined()
+  expect(home().attributes('aria-pressed')).toBe('false')
+  await acceptLatest()
+  expect(home().attributes('disabled')).toBeUndefined()
+  state.value = { ...state.value, ha_observed_at: Date.now() / 1000 - 31 }
+  await nextTick()
+  expect(home().attributes('disabled')).toBeDefined()
+  wrapper.getComponent(SidePanel).vm.$emit('number-set', 'number.configured', 1)
+  await nextTick()
+  expect(commands.send).toHaveBeenCalledTimes(1)
+  expect(wrapper.text()).toContain('No change was sent')
+})
+
+it('checks override authority at the App boundary independently of DRY and rejects expired status', async () => {
+  const request_id = '123e4567-e89b-42d3-a456-426614174000'
+  state.value = { native_connected: true, dry_run: true, setpoint_override_controls_available: true,
+    setpoint_override_observed_at: Date.now() / 1000,
+    setpoint_override: { value: null, last_error: null, request_id: null } }
+  const wrapper = render()
+  wrapper.getComponent(StatCards).vm.$emit('send', 'set_setpoint_override', { value: -500, request_id })
+  expect(commands.send).toHaveBeenCalledWith('set_setpoint_override', { value: -500, request_id })
+  state.value = { ...state.value, setpoint_override_observed_at: Date.now() / 1000 - 31 }
+  await nextTick()
+  wrapper.getComponent(StatCards).vm.$emit('send', 'set_setpoint_override', { value: null, request_id })
+  expect(commands.send).toHaveBeenCalledTimes(1)
+  expect(useConnection().commandError.value).toMatchObject({ action: 'set_setpoint_override', request_id })
 })

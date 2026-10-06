@@ -17,7 +17,7 @@
           type="button"
           class="classic-btn min-w-[28px]"
           :class="{ 'classic-btn-on': dryRun }"
-          :disabled="controlsAvailable === false || dryRun === undefined"
+          :disabled="commandPending || controlsAvailable === false || dryRun === undefined"
           :aria-pressed="dryRun"
           :title="dryRun === undefined ? 'Controller state unavailable' : 'Dry run'"
           @click="$emit('send', 'dry_run', { value: !dryRun })"
@@ -94,6 +94,8 @@ const props = withDefaults(defineProps<{
   isDark: boolean
   showHeaderToggles?: boolean
   controlsAvailable?: boolean
+  haControlsAvailable?: boolean
+  commandPending?: boolean
   /** Public / here.now: status display only — no command buttons. */
   readOnly?: boolean
 }>(), { dryRun: undefined, showHeaderToggles: true, controlsAvailable: true })
@@ -106,7 +108,8 @@ const emit = defineEmits<{
 
 function toggleUnavailable(toggle: DashboardControl): boolean {
   const value = props.toggleStates?.[toggle.id]
-  return (inverterControlFlagKey(toggle.entity) !== null && props.controlsAvailable === false)
+  return props.commandPending === true
+    || (inverterControlFlagKey(toggle.entity) !== null ? props.controlsAvailable === false : props.haControlsAvailable !== true)
     || (value !== 'on' && value !== 'off')
 }
 

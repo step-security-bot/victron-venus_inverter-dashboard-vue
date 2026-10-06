@@ -7,6 +7,7 @@ vi.mock('../config/publicMode', () => ({
 }))
 vi.mock('./useChart', () => ({ addHistoryPoint: vi.fn() }))
 
+import { addHistoryPoint } from './useChart'
 import { useConnection } from './useConnection'
 import { mqttConnected, state } from './useInverterState'
 
@@ -167,6 +168,95 @@ describe('private connection lifetime', () => {
     expect(state.value.gt).toBe(123)
     expect(mqttConnected.value).toBe(false)
   })
+  it('never replaces a newer socket snapshot with an older in-flight HTTP response', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    connection.connectMqtt()
+    const socket = FakeWebSocket.instances[0]
+    socket.open()
+    socket.onmessage?.({ data: JSON.stringify({ gt: 42, mqtt_connected: true }) })
+    finish({ ok: true, json: async () => ({ gt: 999, mqtt_connected: false }) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.value.gt).toBe(42)
+    expect(mqttConnected.value).toBe(true)
+  })
+
+  it('retires an HTTP result on online recovery even before new telemetry arrives', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    connection.connectMqtt()
+    state.value = { gt: 42 }
+    window.dispatchEvent(new Event('online'))
+    finish({ ok: true, json: async () => ({ gt: 999, mqtt_connected: true }) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.value.gt).toBe(42)
+    expect(mqttConnected.value).toBe(false)
+  })
+
+  it('bounds private polls without overlap and retires even a fetch that ignores abort', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    connection.connectMqtt()
+    const signal = fetchMock.mock.calls[0][1].signal as AbortSignal
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1001)
+    expect(signal.aborted).toBe(true)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    finish({ ok: true, json: async () => ({ gt: 999, mqtt_connected: true }) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.value.gt).toBe(1)
+  })
+
+  it('keeps command responses out of state and history, including retired socket responses', async () => {
+    connection.connectMqtt()
+    await vi.advanceTimersByTimeAsync(0)
+    const socket = FakeWebSocket.instances[0]
+    socket.open()
+    socket.onmessage?.({ data: JSON.stringify({ gt: 42, mqtt_connected: true }) })
+    vi.mocked(addHistoryPoint).mockClear()
+    const respond = socket.onmessage!
+    respond({ data: JSON.stringify({ type: 'command_result', action: 'toggle', request_id: 'current', status: 'accepted' }) })
+    expect(connection.commandResult.value?.request_id).toBe('current')
+    expect(state.value.gt).toBe(42)
+    expect(addHistoryPoint).not.toHaveBeenCalled()
+    window.dispatchEvent(new Event('online'))
+    respond({ data: JSON.stringify({ type: 'command_error', action: 'toggle', request_id: 'retired', error: 'rejected' }) })
+    expect(connection.commandError.value).toBeNull()
+  })
+
+  it('keeps cached values in tiles but inserts a history gap for stale or disconnected snapshots', async () => {
+    connection.connectMqtt()
+    await vi.advanceTimersByTimeAsync(0)
+    const socket = FakeWebSocket.instances[0]
+    socket.open()
+    for (const extra of [{ mqtt_connected: false }, { mqtt_connected: true, telemetry: { quality: 'stale' } }]) {
+      socket.onmessage?.({ data: JSON.stringify({ gt: 42, ...extra }) })
+      expect(state.value.gt).toBe(42)
+      expect(addHistoryPoint).toHaveBeenLastCalledWith({})
+    }
+    socket.onmessage?.({ data: JSON.stringify({ gt: 0, mqtt_connected: true, telemetry: { quality: 'live' } }) })
+    expect(addHistoryPoint).toHaveBeenLastCalledWith(expect.objectContaining({ gt: 0 }))
+  })
+
+  it('inserts an outage boundary even when the connection closes without a stale frame', async () => {
+    connection.connectMqtt()
+    await vi.advanceTimersByTimeAsync(0)
+    const socket = FakeWebSocket.instances[0]
+    socket.open()
+    socket.onmessage?.({ data: JSON.stringify({ gt: 42, mqtt_connected: true }) })
+    vi.mocked(addHistoryPoint).mockClear()
+    socket.close()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(addHistoryPoint).toHaveBeenCalledWith({})
+    await vi.advanceTimersByTimeAsync(2000)
+    const next = FakeWebSocket.instances[1]
+    next.open()
+    next.onmessage?.({ data: JSON.stringify({ gt: 12, mqtt_connected: true }) })
+    expect(addHistoryPoint).toHaveBeenLastCalledWith(expect.objectContaining({ gt: 12 }))
+  })
+
   it('bounds a stalled handshake and retries once without another browser event', async () => {
     connection.connectMqtt()
     const stalled = FakeWebSocket.instances[0]

@@ -70,11 +70,11 @@
           </div>
           <div class="flex flex-col">
             <div class="flex justify-between items-baseline">
-              <span v-if="src.pvVoltage" class="text-[10px] font-bold text-solar opacity-80"
+              <span v-if="src.pvVoltage != null" class="text-[10px] font-bold text-solar opacity-80"
                 >{{ src.pvVoltage.toFixed(2) }}V</span
               >
               <span
-                v-if="src.current"
+                v-if="src.current != null"
                 class="text-[10px] font-medium text-slate-500 dark:text-slate-300"
                 >{{ src.current.toFixed(1) }}A</span
               >

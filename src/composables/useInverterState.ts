@@ -1,5 +1,7 @@
 import { ref, shallowRef } from 'vue'
+import type { SetpointOverrideStatus } from '../setpointOverride'
 import type { EssModeState } from '../essMode'
+import type { GridEnergyDaily } from '../components/dailyGridEnergy'
 import type { DashboardControl } from '../utils'
 import type {
   HaCoverDisplay,
@@ -9,6 +11,13 @@ import type {
   HaSensorDisplay,
   HaWeatherDisplay,
 } from '../types/ha'
+
+export interface GridBackupStatus {
+  service?: string | null
+  available: boolean
+  enabled: boolean
+  power?: number | null
+}
 
 export interface InverterState {
   data_source?: string
@@ -25,6 +34,12 @@ export interface InverterState {
   g1?: number
   g2?: number
   g3?: number
+  grid_l1_available?: boolean
+  grid_l2_available?: boolean
+  grid_l3_available?: boolean
+  grid_backup?: GridBackupStatus | null
+  grid_using_backup?: boolean
+  grid_backup_observed_at?: number | null
   tt?: number
   t1?: number
   t2?: number
@@ -38,13 +53,20 @@ export interface InverterState {
   battery_voltage?: number
   battery_current?: number
   setpoint?: number
+  setpoint_override?: SetpointOverrideStatus | null
+  setpoint_override_controls_available?: boolean
+  setpoint_override_observed_at?: number | null
   inverter_state?: string
   version?: string
   uptime?: number
   ha_connected?: boolean
   ha_direct_connected?: boolean
+  ha_controls_available?: boolean
+  ha_observed_at?: number | null
   dry_run?: boolean
   controller_controls_available?: boolean
+  electricity_tariff_controls_available?: boolean
+  electricity_tariff_observed_at?: number | null
   ess_mode?: EssModeState & { hub4_mode?: number; battery_life_state?: number }
   ess_mode_controls_available?: boolean
   ess_mode_observed_at?: number | null
@@ -84,8 +106,9 @@ export interface InverterState {
   load_names?: Record<string, string>
   ui_config?: {
     electricity_tariff?: unknown
+    electricity_tariff_status?: { writable?: boolean; revision?: string; request_id?: string | null; error?: string | null }
     loads?: { hidden?: string[]; min_watts?: number }
-    home_buttons?: Array<{ id: string; label: string; entity: string; state_key?: string }>
+    home_buttons?: Array<{ id: string; label: string; entity: string; state_key?: string; enabled?: boolean }>
     header_toggles?: DashboardControl[]
     // Runtime-editable settings persisted via /api/settings or WS set_settings
     settings?: {
@@ -97,6 +120,9 @@ export interface InverterState {
       mqtt_password?: string
       ha_url?: string
       ha_token?: string
+      show_daily_stats?: boolean
+      show_ha_sensors?: boolean
+      show_ha_numbers?: boolean
       show_ev?: boolean
       show_washer?: boolean
       show_dryer?: boolean
@@ -146,6 +172,7 @@ export interface InverterState {
     produced_yesterday?: number
     produced_dollars?: number
     grid_kwh?: number | null
+    grid_energy?: GridEnergyDaily | null
     battery_in?: number
     battery_out?: number
     battery_in_yesterday?: number
@@ -174,9 +201,9 @@ export interface InverterState {
   dishwasher_running?: boolean
   dishwasher_duration?: number
   washer_time?: number
-  washer_power?: boolean
+  washer_power?: boolean | number
   dryer_time?: number
-  dryer_power?: boolean
+  dryer_power?: boolean | number
   latest_version?: string
   dashboard_version?: string
 }

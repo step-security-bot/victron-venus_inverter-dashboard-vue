@@ -28,6 +28,7 @@ function withPageToken(url: string): string {
 export function useConnection() {
   const commandConnected = ref(false)
   const commandError = ref<EssModeCommandError | null>(null)
+  const commandResult = ref<{ action: string; request_id: string; status: 'accepted' } | null>(null)
   let ws: WebSocket | null = null
   let disposed = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -38,17 +39,27 @@ export function useConnection() {
   const publicMode = isPublicMode()
   let publicActive = false
   let publicRequest: AbortController | null = null
+  let privateRequest: AbortController | null = null
+  let privateRequestTimer: ReturnType<typeof setTimeout> | null = null
   let publicExpiryTimer: ReturnType<typeof setTimeout> | null = null
+
+  function markDisconnected() {
+    if (mqttConnected.value) addHistoryPoint({})
+    mqttConnected.value = false
+  }
 
   function processState(newState: InverterState) {
     newState = normalizeTelemetry(newState)
     state.value = markRaw(newState)
-    addHistoryPoint({
+    const live = connectionStatus(newState) !== false
+      && (!newState.telemetry?.quality || newState.telemetry.quality === 'live')
+    // A cached snapshot remains useful in tiles, but is not a new power measurement.
+    addHistoryPoint(live ? {
       gt: newState.gt,
       solar_total: newState.solar_total,
       battery_power: newState.battery_power,
       setpoint: newState.setpoint,
-    })
+    } : {})
     return newState
   }
 
@@ -56,7 +67,10 @@ export function useConnection() {
     if (!publicActive || publicRequest) return
     const request = new AbortController()
     publicRequest = request
-    const requestTimer = setTimeout(() => request.abort(), 10000)
+    const requestTimer = setTimeout(() => {
+      request.abort()
+      if (publicRequest === request) publicRequest = null
+    }, 10000)
     try {
       const resp = await fetch(gatewaySnapshotUrl(), {
         cache: 'no-store',
@@ -81,7 +95,7 @@ export function useConnection() {
       if (publicExpiryTimer) clearTimeout(publicExpiryTimer)
       // Keep the last snapshot visible, but never label an expired snapshot live.
       publicExpiryTimer = setTimeout(() => {
-        mqttConnected.value = false
+        markDisconnected()
         publicExpiryTimer = null
       }, 15000)
     } catch {
@@ -92,17 +106,29 @@ export function useConnection() {
     }
   }
 
+  function retireHttpRequest() {
+    privateRequest?.abort()
+    privateRequest = null
+    if (privateRequestTimer) clearTimeout(privateRequestTimer)
+    privateRequestTimer = null
+  }
+
   async function pollHttpState() {
-    if (disposed) return
+    if (disposed || privateRequest) return
     // Fallback when WS is down or silent: /api/state carries live tiles (1.8.17+).
     if (ws && ws.readyState === WebSocket.OPEN && Date.now() - lastMessageTime < 8000) {
       return
     }
+    const request = new AbortController()
+    privateRequest = request
+    privateRequestTimer = setTimeout(() => {
+      if (privateRequest === request) retireHttpRequest()
+    }, 10000)
     try {
-      const resp = await fetch(withPageToken(apiUrl('/api/state')), { cache: 'no-store' })
+      const resp = await fetch(withPageToken(apiUrl('/api/state')), { cache: 'no-store', signal: request.signal })
       if (!resp.ok) return
       const data = (await resp.json()) as InverterState & { ok?: boolean }
-      if (disposed || !data || data.ok === false) return
+      if (disposed || privateRequest !== request || request.signal.aborted || !data || data.ok === false) return
       const normalized = processState(data)
       const connected = connectionStatus(data)
       if (connected !== undefined) {
@@ -114,6 +140,8 @@ export function useConnection() {
       }
     } catch {
       // ignore — WS reconnect path owns hard failures
+    } finally {
+      if (privateRequest === request) retireHttpRequest()
     }
   }
 
@@ -135,7 +163,7 @@ export function useConnection() {
 
   function connectPublic() {
     publicActive = true
-    mqttConnected.value = false
+    markDisconnected()
     startHttpPoll()
   }
 
@@ -168,7 +196,7 @@ export function useConnection() {
       ws = socket
     } catch (e) {
       logger.error('WebSocket connection failed:', e)
-      mqttConnected.value = false
+      markDisconnected()
       reconnectTimer = setTimeout(connectMqtt, 2000)
       return
     }
@@ -188,8 +216,9 @@ export function useConnection() {
       if (disposed || ws !== socket) return
       clearConnectTimer()
       ws = null
+      retireHttpRequest()
       commandConnected.value = false
-      mqttConnected.value = false
+      markDisconnected()
       stopHeartbeat()
       reconnectTimer = setTimeout(connectMqtt, 2000)
     }
@@ -197,14 +226,14 @@ export function useConnection() {
     socket.onerror = () => {
       if (disposed || ws !== socket) return
       commandConnected.value = false
+      retireHttpRequest()
       logger.error('WebSocket error')
-      mqttConnected.value = false
+      markDisconnected()
       socket.close()
     }
 
     socket.onmessage = (e) => {
       if (disposed || ws !== socket) return
-      lastMessageTime = Date.now()
       try {
         const data = JSON.parse(e.data)
         if (data?.type === 'command_error') {
@@ -213,6 +242,15 @@ export function useConnection() {
           }
           return
         }
+        if (data?.type === 'command_result') {
+          if (typeof data.action === 'string' && typeof data.request_id === 'string' && data.status === 'accepted') {
+            commandResult.value = { action: data.action, request_id: data.request_id, status: 'accepted' }
+          }
+          return
+        }
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return
+        lastMessageTime = Date.now()
+        retireHttpRequest()
         processState(data as InverterState)
         mqttConnected.value = connectionStatus(data) ?? true
       } catch (err) {
@@ -253,6 +291,7 @@ export function useConnection() {
   }
 
   function closeSocket() {
+    retireHttpRequest()
     clearConnectTimer()
     const socket = ws
     ws = null
@@ -274,7 +313,7 @@ export function useConnection() {
       clearTimeout(publicExpiryTimer)
       publicExpiryTimer = null
     }
-    mqttConnected.value = false
+    markDisconnected()
     closeSocket()
     stopHeartbeat()
     stopHttpPoll()
@@ -306,7 +345,7 @@ export function useConnection() {
     if (reconnectTimer) clearTimeout(reconnectTimer)
     closeSocket()
     commandConnected.value = false
-    mqttConnected.value = false
+    markDisconnected()
     stopHeartbeat()
     reconnectTimer = setTimeout(connectMqtt, 500)
   }
@@ -321,6 +360,7 @@ export function useConnection() {
     mqttConnected,
     commandConnected,
     commandError,
+    commandResult,
     haMqttConnected: { value: null },
     appConfig: { value: null },
     connectMqtt,

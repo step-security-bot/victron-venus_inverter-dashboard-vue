@@ -100,3 +100,24 @@ it('never invents Home entities or unavailable switch readings', () => {
   expect(ha.homeButtons.value).toEqual([])
   ha.cleanupHa()
 })
+
+it('accepts legacy appliance watts without treating standby or missing power as running', () => {
+  const ha = useHA()
+  state.value = { washer_power: 500, dryer_power: 0.5 }
+  expect(ha.washerRunning.value).toBe(true)
+  expect(ha.dryerRunning.value).toBe(false)
+  state.value = { washer_power: Number.NaN, dryer_power: true }
+  expect(ha.washerRunning.value).toBeUndefined()
+  expect(ha.dryerRunning.value).toBe(true)
+  ha.cleanupHa()
+})
+
+it('honors explicitly disabled configured Home entities without changing enabled order', () => {
+  state.value = { ui_config: { home_buttons: [
+    { id: 'disabled', entity: 'switch.disabled', label: 'Hidden', enabled: false },
+    { id: 'enabled', entity: 'light.enabled', label: 'Visible', enabled: true },
+  ] } }
+  const ha = useHA()
+  expect(ha.homeButtons.value.map(item => item.id)).toEqual(['enabled'])
+  ha.cleanupHa()
+})

@@ -1,4 +1,4 @@
-import { type Ref, ref } from 'vue'
+import { type Ref, ref, watch, getCurrentScope, onScopeDispose } from 'vue'
 
 const MAX_HISTORY_POINTS = 1800
 const CHART_UPDATE_INTERVAL_MS = 1000
@@ -69,7 +69,13 @@ export function useChart(isDarkRef: Ref<boolean>) {
   let lastChartUpdate = 0
 
   // Register callback so addHistoryPoint triggers chart updates
-  setChartUpdateCallback(() => updateChartOption(false))
+  const onHistory = () => updateChartOption(false)
+  setChartUpdateCallback(onHistory)
+  const stopTheme = watch(isDarkRef, () => updateChartOption(true))
+  if (getCurrentScope()) onScopeDispose(() => {
+    stopTheme()
+    if (chartUpdateCallback === onHistory) chartUpdateCallback = null
+  })
   // Always paint axes immediately so publicMode never shows a blank broken area
   // before the first snapshot arrives (and when history stays empty).
 
@@ -101,9 +107,9 @@ export function useChart(isDarkRef: Ref<boolean>) {
           })
           let result = `${timeStr}<br/>`
           params.forEach((p: TooltipParam) => {
-            if (p.seriesName === 'Setpoint' || p.value[1] === null) return
+            if (p.value[1] === null) return
             const val = Math.floor(p.value[1])
-            const valStr = val >= 1000 ? `${(val / 1000).toFixed(1)}kW` : `${val}W`
+            const valStr = Math.abs(val) >= 1000 ? `${(val / 1000).toFixed(1)}kW` : `${val}W`
             result += `<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:${p.color};"></span>`
             result += `${p.seriesName}: ${valStr}<br/>`
           })
@@ -134,7 +140,7 @@ export function useChart(isDarkRef: Ref<boolean>) {
         axisLabel: {
           color: textColor,
           fontSize: 10,
-          formatter: (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v),
+          formatter: (v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : v),
         },
       },
       series: [
@@ -144,8 +150,8 @@ export function useChart(isDarkRef: Ref<boolean>) {
           smooth: true,
           showSymbol: false,
           data: timeData.map((t, i) => [t, grid[i] ?? null]),
-          lineStyle: { color: '#2196f3', width: 2 },
-          areaStyle: { color: 'rgba(33,150,243,0.1)' },
+          lineStyle: { color: '#3b82f6', width: 2 },
+          areaStyle: { color: 'rgba(59,130,246,0.1)' },
         },
         {
           name: 'Solar',
@@ -153,8 +159,8 @@ export function useChart(isDarkRef: Ref<boolean>) {
           smooth: true,
           showSymbol: false,
           data: timeData.map((t, i) => [t, solar[i] ?? null]),
-          lineStyle: { color: '#ff9800', width: 2 },
-          areaStyle: { color: 'rgba(255,152,0,0.1)' },
+          lineStyle: { color: '#f59e0b', width: 2 },
+          areaStyle: { color: 'rgba(245,158,11,0.1)' },
         },
         {
           name: 'Battery',
@@ -162,8 +168,8 @@ export function useChart(isDarkRef: Ref<boolean>) {
           smooth: true,
           showSymbol: false,
           data: timeData.map((t, i) => [t, battery[i] ?? null]),
-          lineStyle: { color: '#4caf50', width: 2 },
-          areaStyle: { color: 'rgba(76,175,80,0.1)' },
+          lineStyle: { color: '#22c55e', width: 2 },
+          areaStyle: { color: 'rgba(34,197,94,0.1)' },
         },
         {
           name: 'Setpoint',
@@ -171,7 +177,7 @@ export function useChart(isDarkRef: Ref<boolean>) {
           smooth: true,
           showSymbol: false,
           data: timeData.map((t, i) => [t, setpoint[i] ?? null]),
-          lineStyle: { color: '#00bcd4', width: 2, type: 'dashed' },
+          lineStyle: { color: '#06b6d4', width: 2, type: 'dashed' },
           areaStyle: { opacity: 0 },
         },
       ],

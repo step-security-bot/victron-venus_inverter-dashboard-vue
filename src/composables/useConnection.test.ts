@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { addHistoryPoint } from './useChart'
 import { useConnection } from './useConnection'
 import { mqttConnected, state } from './useInverterState'
 
@@ -67,6 +68,7 @@ describe('public snapshot freshness', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(mqttConnected.value).toBe(false)
     expect(state.value.gt).toBe(123)
+    expect(addHistoryPoint).toHaveBeenLastCalledWith({})
     fetchMock.mockResolvedValue(response(snapshot(456)))
     await vi.advanceTimersByTimeAsync(3000)
     expect(mqttConnected.value).toBe(true)
@@ -111,6 +113,20 @@ describe('public snapshot freshness', () => {
     expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true)
     fetchMock.mockResolvedValue(response(snapshot(456)))
     await vi.advanceTimersByTimeAsync(12000)
+    expect(mqttConnected.value).toBe(true)
+  })
+
+  it('recovers from a fetch that ignores abort without accepting its late result', async () => {
+    let finish!: (value: unknown) => void
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    connection.connectMqtt()
+    const oldSignal = fetchMock.mock.calls[0][1].signal
+    await vi.advanceTimersByTimeAsync(12000)
+    expect(oldSignal.aborted).toBe(true)
+    expect(state.value.gt).toBe(123)
+    finish(response(snapshot(999)))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.value.gt).toBe(123)
     expect(mqttConnected.value).toBe(true)
   })
 

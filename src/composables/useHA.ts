@@ -40,6 +40,12 @@ function populateFiltered(
   target.weather.value = (f.weather as HaWeatherDisplay) ?? null
 }
 
+/** Current HA adapters send booleans; legacy snapshots may carry measured watts. */
+export function appliancePowerActive(value: boolean | number | undefined): boolean | undefined {
+  if (typeof value === 'boolean') return value
+  return typeof value === 'number' && Number.isFinite(value) ? value > 1 : undefined
+}
+
 export function useHA() {
   const haSensors = ref<HaSensorDisplay[]>([])
   const haNumbers = ref<HaNumberDisplay[]>([])
@@ -48,7 +54,8 @@ export function useHA() {
   const haScenes = ref<HaSceneDisplay[]>([])
   const haWeather = ref<HaWeatherDisplay | null>(null)
 
-  const haEnabled = computed(() => !!state.value.ha_direct_connected)
+  const haEnabled = computed(() => state.value.features?.ha === true || state.value.ha_direct_connected === true
+    || !!state.value.ui_config?.home_buttons?.length || !!state.value.ha_filtered)
   const haConnected = computed(() => !!state.value.ha_direct_connected)
 
   const waterValveState = computed(() =>
@@ -67,14 +74,14 @@ export function useHA() {
 
   const washerRunning = computed(() => {
     if (state.value.washer_time !== undefined) return state.value.washer_time > 0
-    if (state.value.washer_power !== undefined) return coerceBool(state.value.washer_power)
+    if (state.value.washer_power !== undefined) return appliancePowerActive(state.value.washer_power)
     const power = state.value.loads?.washer
     return power === undefined ? undefined : (power as number) > 10
   })
 
   const dryerRunning = computed(() => {
     if (state.value.dryer_time !== undefined) return state.value.dryer_time > 0
-    if (state.value.dryer_power !== undefined) return coerceBool(state.value.dryer_power)
+    if (state.value.dryer_power !== undefined) return appliancePowerActive(state.value.dryer_power)
     const power = state.value.loads?.dryer
     return power === undefined ? undefined : (power as number) > 10
   })
@@ -84,7 +91,7 @@ export function useHA() {
   const homeButtons = computed(() => {
     if (publicMode) return []
     const uiConfig = state.value.ui_config || {}
-    return uiConfig.home_buttons || []
+    return (uiConfig.home_buttons || []).filter(button => button.enabled !== false)
   })
 
   const headerToggles = computed(() => {

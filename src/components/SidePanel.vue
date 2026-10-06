@@ -4,7 +4,7 @@
     <div
       v-if="
         showEv !== false &&
-        (features?.ev !== false ||
+        (features?.ev === true ||
           evPresent ||
           evPowerWatts !== undefined ||
           evChargingKw !== undefined ||
@@ -110,7 +110,7 @@
           :key="btn.id"
           class="classic-btn !flex-1 !min-w-[50px] !normal-case flex flex-col items-center gap-0.5"
           :class="{ 'classic-btn-on': buttonStates[btn.id] === 'on' }"
-          :disabled="buttonStates[btn.id] !== 'on' && buttonStates[btn.id] !== 'off'"
+          :disabled="!canControlHa || buttonStates[btn.id] !== 'on' && buttonStates[btn.id] !== 'off'"
           :aria-pressed="buttonStates[btn.id] === 'on' ? true : buttonStates[btn.id] === 'off' ? false : undefined"
           @click="$emit('send', 'toggle', { entity: btn.entity })"
         >
@@ -211,6 +211,7 @@
           </div>
           <input
             type="range"
+            :disabled="!canControlHa"
             :id="'num-slider-' + num.entity_id"
             :aria-labelledby="'num-label-' + num.entity_id"
             :min="num.min"
@@ -252,6 +253,7 @@
           </div>
           <input
             type="range"
+            :disabled="!canControlHa"
             :id="'cover-slider-' + cover.entity_id"
             :aria-labelledby="'cover-label-' + cover.entity_id"
             min="0"
@@ -298,6 +300,7 @@
             <button
               type="button"
               class="classic-btn !px-1.5 !py-0.5 !text-[9px]"
+              :disabled="!canControlHa"
               @click="$emit('media-control', mp.entity_id, 'play')"
             >
               ▶
@@ -305,6 +308,7 @@
             <button
               type="button"
               class="classic-btn !px-1.5 !py-0.5 !text-[9px]"
+              :disabled="!canControlHa"
               @click="$emit('media-control', mp.entity_id, 'pause')"
             >
               ⏸
@@ -312,6 +316,7 @@
             <button
               type="button"
               class="classic-btn !px-1.5 !py-0.5 !text-[9px]"
+              :disabled="!canControlHa"
               @click="$emit('media-control', mp.entity_id, 'stop')"
             >
               ⏹
@@ -419,6 +424,7 @@
           v-for="scene in haScenes"
           :key="scene.entity_id"
           class="classic-btn !flex-1 !min-w-[50px] !normal-case !text-[10px]"
+          :disabled="!canControlHa"
           @click="$emit('scene-activate', scene.entity_id)"
         >
           {{ scene.name }}
@@ -459,6 +465,8 @@ import { formatDuration } from '../utils'
 
 const props = withDefaults(defineProps<{
   features?: Record<string, boolean>
+  haControlsAvailable?: boolean
+  commandPending?: boolean
   evCharging: string
   evPower: string
   evPowerWatts?: number
@@ -537,9 +545,10 @@ function onValveClick() {
 
 const hasWater = computed(() => props.waterVisible ?? (props.waterLevel !== undefined
   || typeof props.pumpSwitch === 'boolean' || typeof props.waterValve === 'boolean'))
-const canControlPump = computed(() => !props.readOnly
+const canControlHa = computed(() => !props.readOnly && !props.commandPending && props.haControlsAvailable === true)
+const canControlPump = computed(() => !props.readOnly && !props.commandPending
   && (props.waterPumpControlsAvailable ?? props.waterControlsAvailable) === true)
-const canControlValve = computed(() => !props.readOnly
+const canControlValve = computed(() => !props.readOnly && !props.commandPending
   && (props.waterValveControlsAvailable ?? props.waterControlsAvailable) === true)
 
 function sendWaterMode(which: 'pump' | 'valve', mode: 0 | 1 | 2) {

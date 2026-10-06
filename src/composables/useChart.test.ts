@@ -1,11 +1,33 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { addHistoryPoint, setChartUpdateCallback, useChart } from './useChart'
 
 describe('useChart', () => {
   beforeEach(() => {
     // Reset global state between tests
     setChartUpdateCallback(() => {})
+  })
+
+  it('repaints for a theme change without waiting for a new power sample', async () => {
+    const scope = effectScope()
+    const dark = ref(false)
+    const chart = scope.run(() => useChart(dark))!
+    const light = (chart.chartOption.value as { tooltip: { backgroundColor: string } }).tooltip.backgroundColor
+    dark.value = true
+    await nextTick()
+    expect((chart.chartOption.value as { tooltip: { backgroundColor: string } }).tooltip.backgroundColor).not.toBe(light)
+    scope.stop()
+  })
+
+  it('shows setpoint in the tooltip together with measured zero and negative power', () => {
+    const chart = useChart(ref(false))
+    const tooltip = (chart.chartOption.value as { tooltip: { formatter: (p: unknown[]) => string } }).tooltip
+    const text = tooltip.formatter([
+      { value: [Date.now(), -1500], seriesName: 'Setpoint', color: '#00bcd4' },
+      { value: [Date.now(), 0], seriesName: 'Battery', color: '#4caf50' },
+    ])
+    expect(text).toContain('Setpoint: -1.5kW')
+    expect(text).toContain('Battery: 0W')
   })
 
   describe('addHistoryPoint', () => {

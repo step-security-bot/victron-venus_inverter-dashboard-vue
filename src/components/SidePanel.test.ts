@@ -90,7 +90,7 @@ describe('desktop appliance and configured Home parity', () => {
       { id: 'guard', label: 'Bedroom guard 3', entity: 'switch.custom_guard' },
       { id: 'lamp', label: 'My lamp', entity: 'light.custom_lamp' },
     ]
-    const wrapper = mount(SidePanel, { props: { ...props, homeButtons, buttonStates: { laundry: 'on', guard: 'off', lamp: 'unavailable' } }, global: { plugins: [i18n] } })
+    const wrapper = mount(SidePanel, { props: { ...props, homeButtons, haControlsAvailable: true, buttonStates: { laundry: 'on', guard: 'off', lamp: 'unavailable' } }, global: { plugins: [i18n] } })
     const buttons = wrapper.findAll('button').filter((b) => homeButtons.some((item) => item.label === b.text()))
     expect(buttons.map((button) => button.text())).toEqual(homeButtons.map((button) => button.label))
     expect(buttons[0].attributes('aria-pressed')).toBe('true')
@@ -99,6 +99,10 @@ describe('desktop appliance and configured Home parity', () => {
     await buttons[1].trigger('click')
     await buttons[2].trigger('click')
     expect(wrapper.emitted('send')).toEqual([['toggle', { entity: 'switch.custom_guard' }]])
+    await wrapper.setProps({ haControlsAvailable: false })
+    expect(buttons[0].attributes('disabled')).toBeDefined()
+    await buttons[0].trigger('click')
+    expect(wrapper.emitted('send')).toHaveLength(1)
     await wrapper.setProps({ homeButtons: [] })
     expect(wrapper.text()).not.toContain('Bedroom guard 3')
     expect(wrapper.text()).not.toContain('Laundry')

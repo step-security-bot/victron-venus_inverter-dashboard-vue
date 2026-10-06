@@ -17,7 +17,7 @@
 
       <div class="mt-3 border-t border-slate-800 pt-2 space-y-1">
         <span class="text-[10px] uppercase text-slate-400">Connection</span>
-        <label v-for="f in CONNECTION" :key="f.key" class="block">
+        <label v-for="f in supportedConnections" :key="f.key" class="block">
           <span class="text-[10px] uppercase text-slate-400">{{ f.label }}</span>
           <input
             v-model="conn[f.key]"
@@ -45,10 +45,13 @@
       </fieldset>
 
       <div class="mt-3 border-t border-slate-800 pt-2 text-slate-300">
-        <TariffConfiguration v-if="open" tariff-scope="dashboard" :configured-tariff="state.ui_config?.electricity_tariff" />
+        <TariffConfiguration v-if="open" tariff-scope="dashboard" :configured-tariff="state.ui_config?.electricity_tariff"
+          :controller-writable="tariffWritable" :controller-revision="tariffRevision" :save-plan="saveControllerTariff" />
       </div>
 
       <SystemNotificationSettings v-if="open" />
+
+      <p v-if="connectionError" role="alert" class="mt-3 text-xs text-red-300">{{ connectionError }}</p>
 
       <button
         class="mt-3 w-full rounded bg-blue-600 hover:bg-blue-500 py-1.5 text-xs font-bold text-white"
@@ -63,12 +66,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { TariffPlan } from '../tariffs/model'
 import TariffConfiguration from '../tariffs/TariffConfiguration.vue'
 import ModalDialog from './ModalDialog.vue'
 import SystemNotificationSettings from './SystemNotificationSettings.vue'
 import { state } from '../composables/useInverterState'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{
+  open: boolean
+  tariffWritable?: boolean
+  tariffRevision?: string
+  saveControllerTariff?: (plan: TariffPlan | null, revision: string) => Promise<void>
+}>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'save', patch: Record<string, unknown>): void
@@ -84,6 +93,13 @@ const VISIBILITY = [
   { key: 'show_ha_media', label: 'sections.media', fallback: 'Media players' },
   { key: 'show_ha_scenes', label: 'sections.scenes', fallback: 'Scenes' },
   { key: 'show_ha_weather', label: 'sections.weather', fallback: 'Weather' },
+  { key: 'show_daily_stats', label: 'sections.dailyStats', fallback: 'Daily energy' },
+  { key: 'show_header_toggles', label: 'sections.headerToggles', fallback: 'Control buttons' },
+  { key: 'show_batteries', label: 'sections.batteries', fallback: 'Batteries' },
+  { key: 'show_solar_production', label: 'sections.solarProduction', fallback: 'Solar production' },
+  { key: 'show_active_loads', label: 'sections.activeLoads', fallback: 'Active loads' },
+  { key: 'show_ha_sensors', label: 'sections.sensors', fallback: 'Sensors' },
+  { key: 'show_ha_numbers', label: 'sections.numbers', fallback: 'Numbers' },
 ] as const
 
 const settings = computed(() => state.value.ui_config?.settings ?? {})
@@ -95,8 +111,8 @@ const visibility = computed<Record<string, boolean | undefined>>(() => {
 
 const { t } = useI18n()
 
-// Connection fields written back at save; secrets masked server-side as
-// "***" — sending that literal back is skipped so stored values survive.
+// Only connection edits are patched; an unchanged server default may not be
+// valid for a different transport. Masked credentials are never sent back.
 const CONNECTION = [
   { key: 'mqtt_host', label: 'MQTT host' },
   { key: 'mqtt_port', label: 'MQTT port' },
@@ -106,7 +122,10 @@ const CONNECTION = [
   { key: 'ha_token', label: 'HA token', secret: true },
 ] as const
 
+const supportedConnections = computed(() => CONNECTION.filter((field) => Object.keys(settings.value).includes(field.key)))
 const conn = ref<Record<string, string>>({})
+let connectionBaseline: Record<string, string> = {}
+const connectionError = ref('')
 
 // Local edit buffers, seeded from the server state when the drawer opens.
 const cameraTopic = ref('')
@@ -116,11 +135,13 @@ watch(
     if (!o) return
     cameraTopic.value = settings.value.camera_topic ?? ''
     const next: Record<string, string> = {}
-    for (const f of CONNECTION) {
+    for (const f of supportedConnections.value) {
       const v = settings.value[f.key]
       next[f.key] = v == null ? '' : String(v)
     }
+    connectionBaseline = { ...next }
     conn.value = next
+    connectionError.value = ''
   },
   { immediate: true }
 )
@@ -130,11 +151,22 @@ function toggle(key: string, val: boolean) {
 }
 
 function save() {
+  connectionError.value = ''
   const patch: Record<string, unknown> = { camera_topic: cameraTopic.value.trim() }
-  for (const f of CONNECTION) {
+  for (const f of supportedConnections.value) {
     const raw = (conn.value[f.key] ?? '').trim()
-    if (raw === '' || raw === '***') continue // empty/masked → keep stored value
-    patch[f.key] = f.key === 'mqtt_port' ? Number(raw) : raw
+    if (raw === (connectionBaseline[f.key] ?? '').trim()) continue
+    if ('secret' in f && f.secret && raw === '***') continue
+    if (f.key === 'mqtt_port') {
+      const port = Number(raw)
+      if (raw === '' || !Number.isInteger(port) || port < 1 || port > 65535) {
+        connectionError.value = 'MQTT port must be an integer from 1 to 65535.'
+        return
+      }
+      patch[f.key] = port
+    } else {
+      patch[f.key] = raw
+    }
   }
   emit('save', patch)
 }

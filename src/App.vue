@@ -11,6 +11,8 @@
           :essFresh="essFresh"
           :essControlsAvailable="state.ess_mode_controls_available"
           :commandError="commandError"
+          :commandPending="commandBusy"
+          :haControlsAvailable="haControlsAvailable"
           :headerToggles="headerToggles"
           :toggleStates="headerToggleStates"
           :isDark="isDark"
@@ -26,22 +28,30 @@
       <!-- Dashboard Content -->
       <div class="flex-1 overflow-y-auto pr-0.5 flex flex-col gap-1 scrollbar-hide">
         <NotificationBanner />
+        <output v-if="commandMessage" class="text-xs px-2 py-1" :class="commandFailed ? 'text-red-600' : 'text-slate-600 dark:text-slate-300'" aria-live="polite">{{ commandMessage }}</output>
 
         <CameraPopup />
 
         <SettingsDrawer
           v-if="!readOnly"
           :open="settingsOpen"
+          :tariffWritable="tariffWritable" :tariffRevision="tariffRevision" :saveControllerTariff="saveControllerTariff"
           @close="settingsOpen = false"
           @save="onSaveSettings"
         />
-        <DailyStats :readOnly="readOnly" />
+        <DailyStats v-if="uiSettings.show_daily_stats !== false" :readOnly="readOnly" />
 
         <StatCards
           :gt="state.gt"
           :g1="state.g1"
           :g2="state.g2"
           :g3="state.g3"
+          :gridL1Available="state.grid_l1_available"
+          :gridL2Available="state.grid_l2_available"
+          :gridL3Available="state.grid_l3_available"
+          :gridBackup="state.grid_backup"
+          :gridUsingBackup="state.grid_using_backup"
+          :gridBackupObservedAt="state.grid_backup_observed_at"
           :tt="state.tt"
           :t1="state.t1"
           :t2="state.t2"
@@ -55,6 +65,14 @@
           :batteryCurrent="state.battery_current"
           :setpoint="state.setpoint"
           :inverterState="state.inverter_state"
+          :overrideStatus="state.setpoint_override"
+          :overrideSource="state.data_source"
+          :overrideObservedAt="state.setpoint_override_observed_at"
+          :overrideAvailable="state.setpoint_override_controls_available === true"
+          :overrideConnected="commandConnected && nativeConnected"
+          :readOnly="readOnly"
+          :commandError="commandError"
+          @send="send"
         />
 
         <div class="grid grid-cols-1 md:grid-cols-12 gap-1">
@@ -64,6 +82,9 @@
           <div class="md:col-span-4">
             <SidePanel
               :features="state.features"
+              :appConfig="uiSettings"
+              :haControlsAvailable="haControlsAvailable"
+              :commandPending="commandBusy"
               :evCharging="evCharging"
               :evPower="evPower"
               :evPowerWatts="evPowerWatts"
@@ -83,10 +104,10 @@
               :dishwasherDuration="state.dishwasher_duration"
               :washerRunning="washerRunning"
               :washerTime="state.washer_time"
-              :washerPower="state.washer_power"
+              :washerPower="appliancePowerActive(state.washer_power)"
               :dryerRunning="dryerRunning"
               :dryerTime="state.dryer_time"
-              :dryerPower="state.dryer_power"
+              :dryerPower="appliancePowerActive(state.dryer_power)"
               :homeButtons="homeButtons"
               :buttonStates="buttonStates"
               :haSensors="haSensors"
@@ -138,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import BatterySolarPanel from './components/BatterySolarPanel.vue'
 import CameraPopup from './components/CameraPopup.vue'
@@ -152,9 +173,12 @@ import SidePanel from './components/SidePanel.vue'
 import StatCards from './components/StatCards.vue'
 import StatusBar from './components/StatusBar.vue'
 import { useChart } from './composables/useChart'
+import { useControllerTariff } from './composables/useControllerTariff'
+import { useCommandFeedback } from './composables/useCommandFeedback'
+import { isSetpointOverrideFresh } from './setpointOverride'
 import { useConnection } from './composables/useConnection'
 import { setNotificationCommandSender } from './composables/useNotifications'
-import { useHA } from './composables/useHA'
+import { appliancePowerActive, useHA } from './composables/useHA'
 import { initSystemNotifications } from './composables/useSystemNotifications'
 import { useTheme } from './composables/useTheme'
 import { isPublicMode } from './config/publicMode'
@@ -171,10 +195,13 @@ const {
   mqttConnected,
   commandConnected,
   commandError,
+  commandResult,
   connectMqtt,
   send: wsSend,
   cleanup: cleanupConnection,
 } = useConnection()
+
+const { busy: commandBusy, message: commandMessage, failed: commandFailed, submit: submitCommand, refuse: refuseCommand } = useCommandFeedback(commandConnected, commandError, commandResult, wsSend)
 
 if (!readOnly) setNotificationCommandSender(wsSend)
 
@@ -211,6 +238,9 @@ onMounted(() => { essClock = setInterval(() => { now.value = Date.now() }, 1000)
 onUnmounted(() => { clearInterval(essClock) })
 const uiSettings = computed(() => state.value.ui_config?.settings ?? {})
 const nativeConnected = computed(() => mqttConnected.value && connectionStatus(state.value) !== false)
+const { writable: tariffWritable, revision: tariffRevision, save: saveControllerTariff } = useControllerTariff({
+  state, connected: computed(() => commandConnected.value && nativeConnected.value), readOnly, commandError, send: wsSend,
+})
 const controllerControlsAvailable = computed(() =>
   commandConnected.value && nativeConnected.value && state.value.controller_controls_available !== false
 )
@@ -218,6 +248,13 @@ const waterPumpControlsAvailable = computed(() =>
   commandConnected.value && nativeConnected.value && waterControlAvailable(state.value, 'pump'))
 const waterValveControlsAvailable = computed(() =>
   commandConnected.value && nativeConnected.value && waterControlAvailable(state.value, 'valve'))
+const haControlsAvailable = ref(false)
+watch([now, commandConnected, state], () => {
+  const at = state.value.ha_observed_at
+  const age = typeof at === 'number' ? Date.now() / 1000 - at : Number.NaN
+  haControlsAvailable.value = !readOnly && commandConnected.value && state.value.ha_direct_connected === true
+    && state.value.ha_controls_available === true && age >= 0 && age <= 30
+}, { immediate: true, flush: 'sync' })
 const waterSeen = ref(false)
 watchEffect(() => { if (waterPresent(state.value)) waterSeen.value = true })
 const waterVisible = computed(() => waterSeen.value || waterPresent(state.value))
@@ -240,38 +277,64 @@ function flagTogglePayload(payload: Record<string, unknown>): Record<string, unk
   return { ...payload, entity: flag, state: payload.state ?? (current === 'on' ? 'off' : 'on') }
 }
 
-async function send(action: string, payload: Record<string, unknown> = {}) {
+function selectionAllowed(action: string, payload: Record<string, unknown>): boolean {
+  if (readOnly || !commandConnected.value || !nativeConnected.value) return false
   if (action === 'set_ess_mode') {
-    try {
-      const allowed = !readOnly && controllerControlsAvailable.value
-        && isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
-        && state.value.ess_mode_controls_available === true
-        && state.value.ess_mode?.selection_supported === true && dryRun.value === false
-      if (!allowed || !wsSend(action, payload)) refuseEssSelection(payload)
-    } catch {
-      // Vue events cannot propagate async parent failures back to the menu.
-      refuseEssSelection(payload)
-    }
-    return
+    return controllerControlsAvailable.value
+      && isEssModeCommandFresh(state.value.ess_mode, state.value.ess_mode_observed_at)
+      && state.value.ess_mode_controls_available === true
+      && state.value.ess_mode?.selection_supported === true && dryRun.value === false
   }
-  if (readOnly) return
-  // Control flags: publish bare key on Cerbo MQTT (desktop parity).
-  if (action === 'toggle') {
-    const normalized = flagTogglePayload(payload)
-    if (normalized === null) return
-    payload = normalized
-  }
-  if ((action === 'ess_mode' || action === 'dry_run') && !controllerControlsAvailable.value) return
-  if (action === 'water_mode' && !canSendWaterMode(payload)) return
-  wsSend(action, payload)
+  const valueValid = payload.value === null || (typeof payload.value === 'number'
+    && Number.isInteger(payload.value) && payload.value >= -2147483648 && payload.value <= 2147483647)
+  return valueValid && state.value.setpoint_override_controls_available === true
+    && isSetpointOverrideFresh(state.value.setpoint_override, state.value.setpoint_override_observed_at)
 }
 
-function refuseEssSelection(payload: Record<string, unknown>) {
+function sendSelection(action: string, payload: Record<string, unknown>) {
+  try {
+    if (!selectionAllowed(action, payload) || !wsSend(action, payload)) refuseSelection(action, payload)
+  } catch {
+    // Vue events cannot propagate parent transport failures back to the control.
+    refuseSelection(action, payload)
+  }
+}
+
+function genericCommandAllowed(action: string, payload: Record<string, unknown>): boolean {
+  const nativeBlocked = (action === 'ess_mode' || action === 'dry_run') && !controllerControlsAvailable.value
+  const waterBlocked = action === 'water_mode' && !canSendWaterMode(payload)
+  const haAction = ['number_set', 'set_cover_position', 'media_player', 'scene_activate'].includes(action)
+    || (action === 'toggle' && typeof payload.entity === 'string' && inverterControlFlagKey(payload.entity) === null)
+  return !(nativeBlocked || waterBlocked || (haAction && !haCommandFresh()))
+}
+
+function send(action: string, payload: Record<string, unknown> = {}) {
+  if (action === 'set_setpoint_override' || action === 'set_ess_mode') {
+    sendSelection(action, payload)
+    return
+  }
+  if (readOnly || commandBusy.value) return
+  if (action === 'toggle') {
+    const normalized = flagTogglePayload(payload)
+    if (normalized === null) { refuseCommand(); return }
+    payload = normalized
+  }
+  if (!genericCommandAllowed(action, payload)) { refuseCommand(); return }
+  submitCommand(action, payload)
+}
+
+function refuseSelection(action: string, payload: Record<string, unknown>) {
   if (typeof payload.request_id !== 'string') return
   commandError.value = {
-    action: 'set_ess_mode', request_id: payload.request_id,
-    error: 'ESS selection is unavailable. No change was sent.',
+    action, request_id: payload.request_id,
+    error: 'Control is unavailable. No change was sent.',
   }
+}
+
+function haCommandFresh(): boolean {
+  const at = state.value.ha_observed_at
+  const age = typeof at === 'number' ? Date.now() / 1000 - at : Number.NaN
+  return haControlsAvailable.value && age >= 0 && age <= 30
 }
 
 function canSendWaterMode(payload: Record<string, unknown>): boolean {

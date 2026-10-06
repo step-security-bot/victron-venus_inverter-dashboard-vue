@@ -29,6 +29,8 @@
       <span class="font-bold text-slate-600 dark:text-white">{{ grid }}kWh</span>
     </div>
 
+    <DailyGridEnergy :energy="ds.grid_energy" />
+
     <TariffCost :kwh="ds.grid_kwh" :tariff-scope="tariffScope" :readOnly="readOnly" :configured-tariff="state.ui_config?.electricity_tariff" />
 
     <div v-if="hasBattery" class="flex items-center gap-1.5 flex-1 min-w-fit">
@@ -73,6 +75,7 @@ import { Battery as BatteryIcon, Zap } from '@lucide/vue'
 import { computed } from 'vue'
 import { state } from '../composables/useInverterState'
 
+import DailyGridEnergy from './DailyGridEnergy.vue'
 import TariffCost from '../tariffs/TariffCost.vue'
 
 withDefaults(defineProps<{ tariffScope?: string; readOnly?: boolean }>(), { tariffScope: 'dashboard', readOnly: false })
@@ -103,7 +106,7 @@ const batDeltaY = computed(() =>
 
 const pvDaily = computed(() => ds.value.pv_inverter_daily || [])
 const mpptDaily = computed(() => ds.value.mppt_daily || [])
-const pvTotalDaily = computed(() => ds.value.pv_total_daily || 0)
+const mpptTotalDaily = computed(() => mpptDaily.value.reduce((sum, value) => sum + value, 0))
 
 const solarStr = computed(() => {
   const parts: string[] = []
@@ -112,7 +115,7 @@ const solarStr = computed(() => {
   })
   const mpptPart =
     mpptDaily.value.length > 0 ? mpptDaily.value.map((v) => v.toFixed(2)).join('+') : '0.00'
-  parts.push(pvTotalDaily.value.toFixed(2) + '(' + mpptPart + ')')
+  parts.push(mpptTotalDaily.value.toFixed(2) + '(' + mpptPart + ')')
   return parts.join('+')
 })
 
