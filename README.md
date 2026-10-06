@@ -191,11 +191,17 @@ Test files use Vitest + @vue/test-utils + Happy DOM.
 
 ## Related Projects
 
-- [inverter-control](https://github.com/victron-venus/inverter-control) - Victron ESS Grid-Zero Controller
-- [inverter-desktop](https://github.com/victron-venus/inverter-desktop) - Tauri Desktop App
-- [inverter-monitoring](https://github.com/victron-venus/inverter-monitoring) - Telegraf/InfluxDB/Grafana Stack
-- [dbus-mqtt-battery](https://github.com/victron-venus/dbus-mqtt-battery) - JBD BMS to D-Bus Bridge
+- [inverter-dashboard-go](https://github.com/victron-venus/inverter-dashboard-go) — Go backend that serves this frontend.
+- [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) — Python backend that serves this frontend in Docker/NAS deployments.
+- [inverter-desktop](https://github.com/victron-venus/inverter-desktop) — Tauri client using the shared interface and native integrations.
+- [inverter-control](https://github.com/victron-venus/inverter-control) — controller state and command contract used by dashboard backends.
+- [dbus-ev](https://github.com/victron-venus/dbus-ev) — vehicle and optional Mercedes charger telemetry exposed through Cerbo.
+- [dbus-pump](https://github.com/victron-venus/dbus-pump) — water telemetry and service controls exposed through Cerbo.
+- [dbus-emporia-vue](https://github.com/victron-venus/dbus-emporia-vue) — per-channel AC-load measurements and tariff data.
 
+Browse the [public project catalog](https://victron-venus.github.io/.github/projects.html)
+for other Venus OS packages and companion tools. Each project documents its own
+installation, compatibility and release requirements.
 
 
 ## Public / here.now mode
