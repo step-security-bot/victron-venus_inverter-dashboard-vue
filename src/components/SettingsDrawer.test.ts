@@ -19,7 +19,7 @@ describe('SettingsDrawer', () => {
       },
     }
     const w = mount(SettingsDrawer, { props: { open: true }, global: { plugins: [i18n] } })
-    const boxes = w.findAll('input[type="checkbox"]')
+    const boxes = w.findAll('[aria-label="Dashboard sections"] input[type="checkbox"]')
     expect(boxes).toHaveLength(9)
     expect(w.get('[aria-label="Electricity tariff"]').text()).toContain('Use a local tariff on this device')
     // show_ev false → first toggle unchecked

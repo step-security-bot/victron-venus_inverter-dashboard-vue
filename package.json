@@ -31,6 +31,7 @@
     "@biomejs/biome": "2.5.15",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vue/test-utils": "^2.5.1",
+    "fake-indexeddb": "6.2.5",
     "happy-dom": "^20.14.5",
     "tailwindcss": "^4.3.0",
     "typescript": "6.0.3",

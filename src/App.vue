@@ -376,17 +376,21 @@ const solarSources = computed(() => {
   return sources
 })
 
+let cleanupSystemNotifications: (() => void) | undefined
 onMounted(async () => {
-  if (!readOnly) setNotificationCommandSender(wsSend)
+  if (!readOnly) {
+    setNotificationCommandSender(wsSend)
+    cleanupSystemNotifications = initSystemNotifications()
+  }
   forceUpdateChart()
   await connectMqtt()
   if (!readOnly) {
     initHa()
-    void initSystemNotifications()
   }
 })
 
 onUnmounted(() => {
+  cleanupSystemNotifications?.()
   setNotificationCommandSender(null)
   cleanupConnection()
   cleanupHa()

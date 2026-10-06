@@ -279,3 +279,30 @@ Tariffs can also be entered during SetupHelper configuration or first-run deskto
 setup and provisioned with deployment files. Seasons and billing start dates
 survive configuration backups and updates. See [installation defaults and tariff
 configuration](docs/electricity-tariffs.md#installation-defaults-and-configuration-backups).
+
+## System notifications
+
+Settings → System notifications provides an explicit browser opt-in, four category
+preferences, status, Disable, and Send test. Web Push must also be enabled on the
+Python or Go dashboard server. The UI confirms the server registration before it
+reports Enabled. A queued test is not proof of delivery: check the system banner or
+notification center. Browser permission and OS background-delivery policy still
+apply. On iPhone/iPad, install the dashboard on the Home Screen and enable from
+that app; see [WebKit’s Web Push documentation](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
+One server-push route handles native Victron warnings, EV charging transitions,
+water pump/valve transitions, and low-battery crossings, whether tabs are open or
+closed. The old local telemetry watcher is removed: near-zero grid watts do not
+prove an outage. Backend source baselines and freshness checks prevent historical
+snapshot storms. The notification body includes the source occurrence time;
+OS chrome may independently label when delivery happened.
+
+`/notifications-sw.js` only handles notifications; it never intercepts requests
+or caches application assets. The server must serve that stable root path as
+JavaScript with no-cache, along with the manifest and icon. IndexedDB holds only
+opt-in state and at most 4096 event hashes for deduplication across tabs/reloads.
+Native subscription credentials remain in PushManager and server registration
+request bodies; dashboard tokens are only sent in same-origin Authorization
+headers. Public mode and cross-origin notification API bases are unsupported.
+Disabling stops local display immediately; a failed server deletion remains
+explicitly retryable, and the browser subscription is not discarded prematurely.

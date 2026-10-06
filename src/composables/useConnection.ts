@@ -325,7 +325,6 @@ export function useConnection() {
     appConfig: { value: null },
     connectMqtt,
     send,
-    ensureNotificationPermission: async () => {},
     cleanup,
   }
 }

@@ -28,7 +28,7 @@
         </label>
       </div>
 
-      <div class="space-y-1">
+      <fieldset aria-label="Dashboard sections" class="m-0 min-w-0 border-0 p-0 space-y-1">
         <label
           v-for="opt in VISIBILITY"
           :key="opt.key"
@@ -42,11 +42,13 @@
             @change="toggle(opt.key, ($event.target as HTMLInputElement).checked)"
           />
         </label>
-      </div>
+      </fieldset>
 
       <div class="mt-3 border-t border-slate-800 pt-2 text-slate-300">
         <TariffConfiguration v-if="open" tariff-scope="dashboard" :configured-tariff="state.ui_config?.electricity_tariff" />
       </div>
+
+      <SystemNotificationSettings v-if="open" />
 
       <button
         class="mt-3 w-full rounded bg-blue-600 hover:bg-blue-500 py-1.5 text-xs font-bold text-white"
@@ -63,6 +65,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TariffConfiguration from '../tariffs/TariffConfiguration.vue'
 import ModalDialog from './ModalDialog.vue'
+import SystemNotificationSettings from './SystemNotificationSettings.vue'
 import { state } from '../composables/useInverterState'
 
 const props = defineProps<{ open: boolean }>()

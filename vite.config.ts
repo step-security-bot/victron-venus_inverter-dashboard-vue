@@ -36,6 +36,7 @@ const spaConfig = defineConfig({
 
 // Library build configuration for reusable Vue components
 const libConfig = defineConfig({
+  publicDir: false,
   plugins: [vue(), tailwindcss()],
   base: './',
   build: {
