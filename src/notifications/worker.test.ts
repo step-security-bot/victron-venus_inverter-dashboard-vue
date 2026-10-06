@@ -13,7 +13,7 @@ function worker() {
   const context = vm.createContext({
     indexedDB: database, IDBKeyRange, URL,
     Date: class extends Date { static now() { return now } },
-    self: { location: { origin: 'https://dashboard.example' }, registration: { showNotification: shown }, addEventListener: (type: string, fn: (event: unknown) => void) => handlers.set(type, fn) },
+    self: { location: { origin: 'https://dashboard.example' }, registration: { showNotification: shown }, clients: { matchAll: async () => [] }, addEventListener: (type: string, fn: (event: unknown) => void) => handlers.set(type, fn) },
   })
   vm.runInContext(source, context)
   const run = (code: string) => vm.runInContext(code, context)
@@ -155,9 +155,23 @@ describe('persistent notification worker', () => {
     await worker().run(`deliver(${JSON.stringify(alarm)})`)
     expect(shown).toHaveBeenCalledTimes(1)
   })
-  it('does not accept cross-origin worker configuration messages', () => {
+  it('accepts a same-origin client message and replies after committing its settings', async () => {
+    const w = worker(); const waitUntil = vi.fn(); const postMessage = vi.fn()
+    w.handlers.get('message')?.({ origin: 'https://dashboard.example', source: { url: 'https://dashboard.example/' }, data: { type: 'notification-settings-begin', generation: 0 }, ports: [{ postMessage }], waitUntil })
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    await waitUntil.mock.calls[0][0]
+    expect(postMessage).toHaveBeenCalledWith({ ok: true, result: { enabled: false, generation: 1, applied: true } })
+    expect(await worker().run('settings()')).toEqual({ enabled: false, generation: 1, applied: true })
+  })
+  it.each([undefined, '', 'null', 'https://foreign.example'])('rejects message origin %s even with a same-origin client URL', (origin) => {
+    const w = worker(); const waitUntil = vi.fn(); const postMessage = vi.fn()
+    w.handlers.get('message')?.({ origin, source: { url: 'https://dashboard.example/' }, data: { type: 'notification-settings-begin', generation: 0 }, ports: [{ postMessage }], waitUntil })
+    expect(waitUntil).not.toHaveBeenCalled()
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+  it('rejects a foreign client URL even with a same-origin message origin', () => {
     const w = worker(); const waitUntil = vi.fn()
-    w.handlers.get('message')?.({ source: { url: 'https://foreign.example/' }, data: { type: 'notification-settings-set', enabled: true, delivery: 'push' }, waitUntil })
+    w.handlers.get('message')?.({ origin: 'https://dashboard.example', source: { url: 'https://foreign.example/' }, data: { type: 'notification-settings-set', enabled: true, delivery: 'push' }, waitUntil })
     expect(waitUntil).not.toHaveBeenCalled()
   })
 })
