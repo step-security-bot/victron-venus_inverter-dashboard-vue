@@ -9,6 +9,7 @@
   --color-solar: #ff9800;
   --color-battery: #4caf50;
   --color-accent: #00bcd4;
+  --color-control-accent: #22c55e;
   --color-text-dim: #757575;
 
   /* Backgrounds */
@@ -62,15 +63,15 @@
   border-radius: 4px !important;
   font-size: 9px !important;
   font-weight: 600 !important;
-  border: 1px solid #555 !important;
+  border: 1px solid #ccc !important;
   transition: all 0.15s !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 4px !important;
   margin: 1px !important;
-  background-color: #333 !important;
-  color: #bbb !important;
+  background-color: #ddd !important;
+  color: #333 !important;
   text-transform: none !important;
   height: auto !important;
   line-height: normal !important;
@@ -86,31 +87,11 @@
   opacity: 0.45;
 }
 
-/* State: ON - Exact v1.0.9 .toggle-btn.on */
-.classic-btn-on {
-  background-color: #2e7d32 !important;
-  border-color: #4caf50 !important;
-  color: #ffffff !important;
-}
-
 /* Dark mode — visible buttons */
 .dark .classic-btn {
   background-color: #333 !important;
   color: #bbb !important;
   border-color: #555 !important;
-}
-
-/* Light mode */
-:not(.dark) .classic-btn {
-  background-color: #ddd !important;
-  color: #333 !important;
-  border-color: #ccc !important;
-}
-
-:not(.dark) .classic-btn-on {
-  background-color: #2e7d32 !important;
-  border-color: #4caf50 !important;
-  color: #ffffff !important;
 }
 
 @layer components {
@@ -121,7 +102,7 @@
     background-color: var(--color-bg-card);
     border-color: var(--color-border-card);
   }
-  
+
   .dark .classic-header {
     background-color: var(--color-dark-bg-card);
     border-color: var(--color-dark-border-card);
@@ -168,9 +149,9 @@
   border-radius: 4px !important;
   font-size: 9px !important;
   font-weight: 600 !important;
-  border: 1px solid #555 !important;
-  background-color: #333 !important;
-  color: #bbb !important;
+  border: 1px solid #ccc !important;
+  background-color: #ddd !important;
+  color: #333 !important;
   cursor: default !important;
   pointer-events: none !important;
   user-select: none !important;
@@ -179,23 +160,32 @@
   height: auto !important;
   line-height: normal !important;
 }
-.classic-status-on {
-  background-color: #2e7d32 !important;
-  border-color: #4caf50 !important;
-  color: #ffffff !important;
-}
 .dark .classic-status {
   background-color: #333 !important;
   color: #bbb !important;
   border-color: #555 !important;
 }
-:not(.dark) .classic-status {
-  background-color: #ddd !important;
-  color: #333 !important;
-  border-color: #ccc !important;
+
+/* Active controls and read-only states share Desktop's calm green palette. */
+.classic-btn-on,
+.classic-status-on {
+  background-color: color-mix(in srgb, var(--color-control-accent) 18%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--color-control-accent) 48%, #ffffff) !important;
+  color: #166534 !important;
 }
-:not(.dark) .classic-status-on {
-  background-color: #2e7d32 !important;
-  border-color: #4caf50 !important;
-  color: #ffffff !important;
+
+.classic-btn-on:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-control-accent) 26%, #ffffff) !important;
+  filter: none !important;
+}
+
+.dark .classic-btn-on,
+.dark .classic-status-on {
+  background-color: color-mix(in srgb, var(--color-control-accent) 24%, #1c1c1e) !important;
+  border-color: color-mix(in srgb, var(--color-control-accent) 45%, #3a3a3c) !important;
+  color: #86efac !important;
+}
+
+.dark .classic-btn-on:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-control-accent) 34%, #1c1c1e) !important;
 }
