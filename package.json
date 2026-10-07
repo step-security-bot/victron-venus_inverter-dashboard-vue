@@ -18,7 +18,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@lucide/vue": "^1.49.0",
+    "@lucide/vue": "^1.50.0",
     "@tailwindcss/vite": "^4.3.0",
     "@univerjs/preset-sheets-core": "1.0.3",
     "@univerjs/presets": "1.0.3",
@@ -37,6 +37,6 @@
     "typescript": "6.0.3",
     "vite": "^8.3.2",
     "vitest": "^5.0.3",
-    "vue-tsc": "3.3.11"
+    "vue-tsc": "3.3.12"
   }
 }

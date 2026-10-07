@@ -51,7 +51,7 @@
           <select :value="selectedSeason" :disabled="busy" @change="switchSeason">
             <option :value="-1">{{ defaultLabel }}</option>
             <option v-for="(season, index) in draft.seasons" :key="index" :value="index">
-              {{ season.name }} · {{ season.months.map((month) => MONTHS[month - 1]).join(', ') }}
+              {{ season.name }} · {{ formatMonths(season.months) }}
             </option>
           </select>
         </label>
@@ -146,6 +146,10 @@ import {
   type TariffPlan,
 } from './model'
 import { clearTariff, saveTariff } from './storage'
+
+function formatMonths(months: number[]): string {
+  return months.map((month) => MONTHS[month - 1]).join(', ')
+}
 
 const props = withDefaults(
   defineProps<{
